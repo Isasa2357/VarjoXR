@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# VarjoXR / C++ / CMake / Visual Studio
+# ------------------------------------------------------------
+
+# CMake build directories
+build/
+out/
+out-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# Visual Studio generated files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+ipch/
+
+# CMake-generated Visual Studio project files
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.vcxproj.FileListAbsolute.txt
+
+# Build products
+bin/
+lib/
+x64/
+x86/
+Win32/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# Object and binary files
+*.obj
+*.o
+*.pch
+*.pdb
+*.idb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.iobj
+*.ipdb
+*.lastbuildstate
+*.tlog
+*.log
+
+# Direct3D / HLSL generated files
+*.cso
+*.fxc
+*.dxil
+*.shaderbin
+*_shader.h
+*_shader.hpp
+
+# Runtime logs / captures / temporary outputs
+logs/
+log/
+captures/
+recordings/
+output/
+tmp/
+temp/
+*.csv
+*.avi
+*.mp4
+*.mkv
+*.png
+*.jpg
+*.jpeg
+*.bmp
+
+# Keep intentionally committed sample assets by un-ignoring examples/assets if needed
+!examples/**
+!samples/**
+!docs/**
+
+# Local SDK / external dependency copies
+external/VarjoSDK/
+third_party/VarjoSDK/
+vendor/VarjoSDK/
+packages/
+.vcpkg/
+
+# IDE/editor settings
+.idea/
+.vscode/.browse.VC.db
+.vscode/*.log
+.vscode/ipch/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python helper scripts cache, if used during development
+__pycache__/
+*.py[cod]
+.venv/
+venv/
