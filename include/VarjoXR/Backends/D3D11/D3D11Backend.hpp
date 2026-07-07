@@ -17,6 +17,11 @@ public:
                  uint32_t height)
         : XRTexture(BackendType::D3D11, width, height), resource(std::move(resource)), srv(std::move(srv)) {}
 
+    D3D11Texture(D3D11CoreLib::ComPtr<ID3D11ShaderResourceView> srv,
+                 uint32_t width,
+                 uint32_t height)
+        : XRTexture(BackendType::D3D11, width, height), srv(std::move(srv)) {}
+
     D3D11CoreLib::D3D11Resource resource;
     D3D11CoreLib::ComPtr<ID3D11ShaderResourceView> srv;
 };
@@ -34,6 +39,13 @@ public:
         uint32_t width,
         uint32_t height,
         uint32_t rowPitchBytes) override;
+    std::shared_ptr<XRTexture> createTextureFromD3D11Resource(
+        ID3D11Texture2D* texture,
+        DXGI_FORMAT srvFormat) override;
+    std::shared_ptr<XRTexture> createTextureFromD3D11Srv(
+        ID3D11ShaderResourceView* srv,
+        uint32_t width,
+        uint32_t height) override;
 
 private:
     struct Impl;
