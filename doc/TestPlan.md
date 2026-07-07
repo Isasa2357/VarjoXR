@@ -84,6 +84,8 @@ cmake --preset vs18-x64-coverage
 cmake --build --preset vs18-x64-coverage-debug
 ```
 
+OpenCppCoverage が PATH に無い場合、`VarjoXRCoverage` target は coverage レポートを出さずに通常テストだけを実行する。
+
 presetを使わない場合:
 
 ```bat
