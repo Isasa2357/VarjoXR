@@ -52,6 +52,32 @@ std::shared_ptr<XRTexture> XRSpace::createTextureFromRGBA(
     return m_backend->createTextureFromRGBA(rgba, width, height, rowPitchBytes);
 }
 
+#if defined(VARJOXR_ENABLE_D3D11)
+std::shared_ptr<XRTexture> XRSpace::createTextureFromD3D11Resource(
+    ID3D11Texture2D* texture,
+    DXGI_FORMAT srvFormat) {
+    if (!m_backend) throw std::runtime_error("XRSpace backend is not initialized.");
+    return m_backend->createTextureFromD3D11Resource(texture, srvFormat);
+}
+
+std::shared_ptr<XRTexture> XRSpace::createTextureFromD3D11Srv(
+    ID3D11ShaderResourceView* srv,
+    uint32_t width,
+    uint32_t height) {
+    if (!m_backend) throw std::runtime_error("XRSpace backend is not initialized.");
+    return m_backend->createTextureFromD3D11Srv(srv, width, height);
+}
+#endif
+
+#if defined(VARJOXR_ENABLE_D3D12)
+std::shared_ptr<XRTexture> XRSpace::createTextureFromD3D12Resource(
+    ID3D12Resource* resource,
+    DXGI_FORMAT srvFormat) {
+    if (!m_backend) throw std::runtime_error("XRSpace backend is not initialized.");
+    return m_backend->createTextureFromD3D12Resource(resource, srvFormat);
+}
+#endif
+
 void XRSpace::update() {
     if (!m_backend) return;
     m_session->pollEvents();
