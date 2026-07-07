@@ -17,6 +17,11 @@ public:
                  uint32_t height)
         : XRTexture(BackendType::D3D12, width, height), resource(std::move(resource)), srv(srv) {}
 
+    D3D12Texture(D3D12CoreLib::D3D12DescriptorHandle srv,
+                 uint32_t width,
+                 uint32_t height)
+        : XRTexture(BackendType::D3D12, width, height), srv(srv) {}
+
     D3D12CoreLib::D3D12Resource resource;
     D3D12CoreLib::D3D12DescriptorHandle srv;
 };
@@ -34,6 +39,9 @@ public:
         uint32_t width,
         uint32_t height,
         uint32_t rowPitchBytes) override;
+    std::shared_ptr<XRTexture> createTextureFromD3D12Resource(
+        ID3D12Resource* resource,
+        DXGI_FORMAT srvFormat) override;
 
 private:
     struct Impl;
