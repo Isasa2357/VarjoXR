@@ -36,6 +36,12 @@ if(VARJOXR_ENABLE_COVERAGE AND MSVC)
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
             COMMENT "Running OpenCppCoverage for VarjoXR core tests")
     else()
-        message(WARNING "VARJOXR_ENABLE_COVERAGE=ON but OpenCppCoverage was not found in PATH. Coverage target will not be generated.")
+        add_custom_target(VarjoXRCoverage
+            COMMAND "${CMAKE_COMMAND}" -E echo "OpenCppCoverage was not found in PATH. Running VarjoXRCoreTests without coverage instead."
+            COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}" -C $<CONFIG> --output-on-failure
+            DEPENDS VarjoXRCoreTests
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+            COMMENT "OpenCppCoverage is unavailable; running tests without coverage")
+        message(WARNING "VARJOXR_ENABLE_COVERAGE=ON but OpenCppCoverage was not found in PATH. The VarjoXRCoverage target will run tests without producing coverage reports.")
     endif()
 endif()
