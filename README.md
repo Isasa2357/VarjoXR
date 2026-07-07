@@ -90,9 +90,12 @@ cbuffer PlaneConstants : register(b0) {
 
 Varjo Runtime、HMD、D3D11Helper、D3D12Helperなしでcore testsだけを実行できます。
 
-推奨: CMake preset を使う方法。
+推奨: GitHub同期込みで CMake preset を使う方法。既存cloneのリポジトリルートで実行してください。
 
 ```bat
+git fetch --prune origin
+git checkout main
+git pull --ff-only origin main
 cmake --preset vs18-x64-tests
 cmake --build --preset vs18-x64-tests-debug
 ctest --preset vs18-x64-tests-debug
@@ -101,6 +104,9 @@ ctest --preset vs18-x64-tests-debug
 presetを使わない場合:
 
 ```bat
+git fetch --prune origin
+git checkout main
+git pull --ff-only origin main
 cmake -S . -B out/build/vs18-x64-tests -G "Visual Studio 18 2026" -A x64 -DVARJOXR_BUILD_RUNTIME=OFF -DVARJOXR_BUILD_TESTS=ON
 cmake --build out/build/vs18-x64-tests --config Debug
 ctest --test-dir out/build/vs18-x64-tests -C Debug --output-on-failure
@@ -112,9 +118,12 @@ ctest --test-dir out/build/vs18-x64-tests -C Debug --output-on-failure
 
 Windows / MSVC では OpenCppCoverage を使う想定です。
 
-推奨: CMake preset を使う方法。
+推奨: GitHub同期込みで CMake preset を使う方法。既存cloneのリポジトリルートで実行してください。
 
 ```bat
+git fetch --prune origin
+git checkout main
+git pull --ff-only origin main
 cmake --preset vs18-x64-coverage
 cmake --build --preset vs18-x64-coverage-debug
 ```
@@ -122,6 +131,9 @@ cmake --build --preset vs18-x64-coverage-debug
 presetを使わない場合:
 
 ```bat
+git fetch --prune origin
+git checkout main
+git pull --ff-only origin main
 cmake -S . -B out/build/vs18-x64-coverage -G "Visual Studio 18 2026" -A x64 -DVARJOXR_BUILD_RUNTIME=OFF -DVARJOXR_BUILD_TESTS=ON -DVARJOXR_ENABLE_COVERAGE=ON
 cmake --build out/build/vs18-x64-coverage --config Debug --target VarjoXRCoverage
 ```
