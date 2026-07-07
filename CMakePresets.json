@@ -1,0 +1,112 @@
+{
+  "version": 8,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 2,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "vs18-x64-tests",
+      "displayName": "Visual Studio 18 2026 x64 - Core Tests",
+      "description": "Configure core unit tests without Varjo Runtime or D3D helper dependencies.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/vs18-x64-tests",
+      "cacheVariables": {
+        "VARJOXR_BUILD_RUNTIME": "OFF",
+        "VARJOXR_BUILD_TESTS": "ON",
+        "VARJOXR_ENABLE_COVERAGE": "OFF"
+      }
+    },
+    {
+      "name": "vs18-x64-coverage",
+      "displayName": "Visual Studio 18 2026 x64 - Core Coverage",
+      "description": "Configure core tests with the OpenCppCoverage target enabled.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/vs18-x64-coverage",
+      "cacheVariables": {
+        "VARJOXR_BUILD_RUNTIME": "OFF",
+        "VARJOXR_BUILD_TESTS": "ON",
+        "VARJOXR_ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "vs18-x64-runtime-d3d11",
+      "displayName": "Visual Studio 18 2026 x64 - Runtime D3D11",
+      "description": "Configure VarjoXR runtime target with D3D11 backend enabled and D3D12 backend disabled.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/vs18-x64-runtime-d3d11",
+      "cacheVariables": {
+        "VARJOXR_BUILD_RUNTIME": "ON",
+        "VARJOXR_BUILD_TESTS": "ON",
+        "VARJOXR_ENABLE_D3D11": "ON",
+        "VARJOXR_ENABLE_D3D12": "OFF"
+      }
+    },
+    {
+      "name": "vs18-x64-runtime-d3d12",
+      "displayName": "Visual Studio 18 2026 x64 - Runtime D3D12",
+      "description": "Configure VarjoXR runtime target with D3D12 backend enabled and D3D11 backend disabled.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/vs18-x64-runtime-d3d12",
+      "cacheVariables": {
+        "VARJOXR_BUILD_RUNTIME": "ON",
+        "VARJOXR_BUILD_TESTS": "ON",
+        "VARJOXR_ENABLE_D3D11": "OFF",
+        "VARJOXR_ENABLE_D3D12": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vs18-x64-tests-debug",
+      "configurePreset": "vs18-x64-tests",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vs18-x64-tests-release",
+      "configurePreset": "vs18-x64-tests",
+      "configuration": "Release"
+    },
+    {
+      "name": "vs18-x64-coverage-debug",
+      "configurePreset": "vs18-x64-coverage",
+      "configuration": "Debug",
+      "targets": [
+        "VarjoXRCoverage"
+      ]
+    },
+    {
+      "name": "vs18-x64-runtime-d3d11-debug",
+      "configurePreset": "vs18-x64-runtime-d3d11",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vs18-x64-runtime-d3d12-debug",
+      "configurePreset": "vs18-x64-runtime-d3d12",
+      "configuration": "Debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "vs18-x64-tests-debug",
+      "configurePreset": "vs18-x64-tests",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "vs18-x64-tests-release",
+      "configurePreset": "vs18-x64-tests",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
