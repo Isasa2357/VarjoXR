@@ -1,100 +1,62 @@
-cmake_minimum_required(VERSION 3.12)
-project(VarjoXR)
+cmake_minimum_required(VERSION 3.20)
+project(VarjoXR LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+option(VARJOXR_ENABLE_D3D11 "Build VarjoXR D3D11 backend" ON)
+option(VARJOXR_ENABLE_D3D12 "Build VarjoXR D3D12 backend" ON)
+option(VARJOXR_ENABLE_WARNINGS "Enable warnings for VarjoXR" ON)
 
-if (POLICY CMP0111)
-  cmake_policy(SET CMP0111 OLD)
+set(VARJOXR_VARJO_INCLUDE_DIR "" CACHE PATH "Directory containing Varjo.h / Varjo_layers.h")
+set(VARJOXR_VARJO_LIBRARY "" CACHE FILEPATH "Path to VarjoLib import library")
+
+add_library(VarjoXR STATIC)
+add_library(VarjoXR::VarjoXR ALIAS VarjoXR)
+
+target_compile_features(VarjoXR PUBLIC cxx_std_17)
+target_include_directories(VarjoXR PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+
+if(VARJOXR_VARJO_INCLUDE_DIR)
+    target_include_directories(VarjoXR PUBLIC "${VARJOXR_VARJO_INCLUDE_DIR}")
 endif()
 
-# Expects to sit next to the Varjo SDK's "include" and "examples" directories, e.g.:
-#   VarjoSDK/include/...
-#   VarjoSDK/examples/Common/...
-#   VarjoSDK/examples/vendor/GLM/...
-#   VarjoSDK/VarjoXR/            <- this CMakeLists.txt
-set(VARJO_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+if(VARJOXR_VARJO_LIBRARY)
+    target_link_libraries(VarjoXR PUBLIC "${VARJOXR_VARJO_LIBRARY}")
+else()
+    target_link_libraries(VarjoXR PUBLIC VarjoLib)
+endif()
 
-# --- Varjo Native SDK (imported, mirrors examples/CMakeLists.txt) ---
-add_library(VarjoLib SHARED IMPORTED GLOBAL)
-set_target_properties(VarjoLib PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${VARJO_SDK_ROOT}/include"
-    IMPORTED_LOCATION "${VARJO_SDK_ROOT}/examples/bin/VarjoLib.dll"
-    IMPORTED_IMPLIB "${VARJO_SDK_ROOT}/examples/lib/VarjoLib.lib"
-)
+target_sources(VarjoXR PRIVATE
+    src/Transform.cpp
+    src/XRObject.cpp
+    src/XRPlane.cpp
+    src/XRSpace.cpp
+    src/VarjoSession.cpp
+    src/Detail/VarjoLayerSubmit.cpp)
 
-# --- GLM (header only, vendored with the SDK examples) ---
-add_library(GLM INTERFACE)
-target_include_directories(GLM INTERFACE
-    "${VARJO_SDK_ROOT}/examples/vendor/GLM/include"
-)
+if(VARJOXR_ENABLE_D3D11)
+    find_package(D3D11Helper CONFIG QUIET)
+    if(NOT TARGET D3D11Helper::D3D11Helper)
+        message(FATAL_ERROR "VARJOXR_ENABLE_D3D11=ON requires target D3D11Helper::D3D11Helper. Add D3D11Helper by find_package() or add_subdirectory().")
+    endif()
+    target_compile_definitions(VarjoXR PUBLIC VARJOXR_ENABLE_D3D11=1)
+    target_link_libraries(VarjoXR PUBLIC D3D11Helper::D3D11Helper)
+    target_sources(VarjoXR PRIVATE src/Backends/D3D11/D3D11Backend.cpp)
+endif()
 
-# --- Varjo example "Common" framework (Session/MultiLayerView/D3D11Renderer/Scene) ---
-# VarjoXR's L1/L2 layers are thin wrappers around these, so they are compiled directly into the
-# VarjoXR static library instead of being duplicated.
-set(_common_dir "${VARJO_SDK_ROOT}/examples/Common")
-set(_sources_common
-    "${_common_dir}/Globals.hpp"
-    "${_common_dir}/Globals.cpp"
-    "${_common_dir}/Session.hpp"
-    "${_common_dir}/Session.cpp"
-    "${_common_dir}/SyncView.hpp"
-    "${_common_dir}/SyncView.cpp"
-    "${_common_dir}/Scene.hpp"
-    "${_common_dir}/Scene.cpp"
-    "${_common_dir}/Renderer.hpp"
-    "${_common_dir}/Renderer.cpp"
-    "${_common_dir}/ExampleShaders.hpp"
-    "${_common_dir}/MultiLayerView.hpp"
-    "${_common_dir}/MultiLayerView.cpp"
-    "${_common_dir}/D3D11Renderer.hpp"
-    "${_common_dir}/D3D11Renderer.cpp"
-    "${_common_dir}/D3D11Shaders.hpp"
-    "${_common_dir}/D3D11Shaders.cpp"
-    "${_common_dir}/D3D11MultiLayerView.hpp"
-    "${_common_dir}/D3D11MultiLayerView.cpp"
-)
+if(VARJOXR_ENABLE_D3D12)
+    find_package(D3D12Helper CONFIG QUIET)
+    if(NOT TARGET D3D12Helper::D3D12Helper)
+        message(FATAL_ERROR "VARJOXR_ENABLE_D3D12=ON requires target D3D12Helper::D3D12Helper. Add D3D12Helper by find_package() or add_subdirectory().")
+    endif()
+    target_compile_definitions(VarjoXR PUBLIC VARJOXR_ENABLE_D3D12=1)
+    target_link_libraries(VarjoXR PUBLIC D3D12Helper::D3D12Helper)
+    target_sources(VarjoXR PRIVATE src/Backends/D3D12/D3D12Backend.cpp)
+endif()
 
-set(_include_dir "${CMAKE_CURRENT_SOURCE_DIR}/include/VarjoXR")
-set(_src_dir "${CMAKE_CURRENT_SOURCE_DIR}/src")
+if(MSVC AND VARJOXR_ENABLE_WARNINGS)
+    target_compile_options(VarjoXR PRIVATE /W4 /permissive-)
+endif()
 
-set(_sources_varjoxr
-    "${_include_dir}/Eye.hpp"
-    "${_include_dir}/Transform.hpp"
-    "${_include_dir}/Material.hpp"
-    "${_include_dir}/ResourceManager.hpp"
-    "${_src_dir}/ResourceManager.cpp"
-    "${_include_dir}/XRObject.hpp"
-    "${_src_dir}/XRObject.cpp"
-    "${_include_dir}/XRPlane.hpp"
-    "${_src_dir}/XRPlane.cpp"
-    "${_include_dir}/XRView.hpp"
-    "${_src_dir}/XRView.cpp"
-    "${_include_dir}/XRSession.hpp"
-    "${_src_dir}/XRSession.cpp"
-    "${_include_dir}/XRScene.hpp"
-    "${_src_dir}/XRScene.cpp"
-    "${_include_dir}/XRSpace.hpp"
-    "${_src_dir}/XRSpace.cpp"
-)
-
-source_group("Common" FILES ${_sources_common})
-source_group("VarjoXR" FILES ${_sources_varjoxr})
-
-add_library(VarjoXR STATIC ${_sources_common} ${_sources_varjoxr})
-
-target_include_directories(VarjoXR
-    PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE
-        "${_common_dir}"
-)
-
-target_compile_definitions(VarjoXR PUBLIC -D_UNICODE -DUNICODE -DNOMINMAX)
-
-target_link_libraries(VarjoXR
-    PUBLIC VarjoLib GLM
-    PRIVATE d3d11 dxgi d3dcompiler windowscodecs
-)
-
-set_property(TARGET VarjoXR PROPERTY FOLDER "Libraries")
+# This library intentionally does not include or compile Varjo SDK examples/Common.
+# Only Varjo Native SDK headers/import library and the user's DirectX helper libraries are used.

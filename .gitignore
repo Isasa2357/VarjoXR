@@ -1,8 +1,5 @@
-# ------------------------------------------------------------
 # VarjoXR / C++ / CMake / Visual Studio
-# ------------------------------------------------------------
 
-# CMake build directories
 build/
 out/
 out-*/
@@ -15,7 +12,6 @@ compile_commands.json
 CTestTestfile.cmake
 Testing/
 
-# Visual Studio generated files
 .vs/
 *.suo
 *.user
@@ -25,14 +21,12 @@ Testing/
 *.VC.VC.opendb
 ipch/
 
-# CMake-generated Visual Studio project files
 *.sln
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
 *.vcxproj.FileListAbsolute.txt
 
-# Build products
 bin/
 lib/
 x64/
@@ -43,7 +37,6 @@ Release/
 RelWithDebInfo/
 MinSizeRel/
 
-# Object and binary files
 *.obj
 *.o
 *.pch
@@ -60,7 +53,6 @@ MinSizeRel/
 *.tlog
 *.log
 
-# Direct3D / HLSL generated files
 *.cso
 *.fxc
 *.dxil
@@ -68,7 +60,6 @@ MinSizeRel/
 *_shader.h
 *_shader.hpp
 
-# Runtime logs / captures / temporary outputs
 logs/
 log/
 captures/
@@ -85,19 +76,12 @@ temp/
 *.jpeg
 *.bmp
 
-# Keep intentionally committed sample assets by un-ignoring examples/assets if needed
-!examples/**
-!samples/**
-!docs/**
-
-# Local SDK / external dependency copies
 external/VarjoSDK/
 third_party/VarjoSDK/
 vendor/VarjoSDK/
 packages/
 .vcpkg/
 
-# IDE/editor settings
 .idea/
 .vscode/.browse.VC.db
 .vscode/*.log
@@ -106,12 +90,10 @@ packages/
 *.swo
 *~
 
-# OS files
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# Python helper scripts cache, if used during development
 __pycache__/
 *.py[cod]
 .venv/
