@@ -60,6 +60,16 @@ MinSizeRel/
 *_shader.h
 *_shader.hpp
 
+coverage/
+coverage-html/
+coverage-xml/
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+OpenCppCoverageResults/
+
 logs/
 log/
 captures/
