@@ -116,7 +116,7 @@ ctest --test-dir out/build/vs18-x64-tests -C Debug --output-on-failure
 
 ## カバレッジ
 
-Windows / MSVC では OpenCppCoverage を使う想定です。
+Windows / MSVC では OpenCppCoverage を使う想定です。OpenCppCoverage が PATH に無い場合、`VarjoXRCoverage` target はcoverageレポートを出さずに通常テストだけを実行します。
 
 推奨: GitHub同期込みで CMake preset を使う方法。既存cloneのリポジトリルートで実行してください。
 
@@ -126,6 +126,17 @@ git checkout main
 git pull --ff-only origin main
 cmake --preset vs18-x64-coverage
 cmake --build --preset vs18-x64-coverage-debug
+```
+
+OpenCppCoverageが無い環境で、coverageではなく通常テストだけを確実に回す場合:
+
+```bat
+git fetch --prune origin
+git checkout main
+git pull --ff-only origin main
+cmake --preset vs18-x64-tests
+cmake --build --preset vs18-x64-tests-debug
+ctest --preset vs18-x64-tests-debug
 ```
 
 presetを使わない場合:
