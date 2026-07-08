@@ -12,18 +12,21 @@ function(varjoxr_find_dxc_runtime_in_dirs out_dxcompiler out_dxil)
     set(_candidate_dirs ${ARGN})
     list(REMOVE_DUPLICATES _candidate_dirs)
 
-    find_file(_dxcompiler
+    unset(_varjoxr_found_dxcompiler CACHE)
+    unset(_varjoxr_found_dxil CACHE)
+
+    find_file(_varjoxr_found_dxcompiler
         NAMES dxcompiler.dll
         PATHS ${_candidate_dirs}
         NO_DEFAULT_PATH)
 
-    find_file(_dxil
+    find_file(_varjoxr_found_dxil
         NAMES dxil.dll
         PATHS ${_candidate_dirs}
         NO_DEFAULT_PATH)
 
-    set(${out_dxcompiler} "${_dxcompiler}" PARENT_SCOPE)
-    set(${out_dxil} "${_dxil}" PARENT_SCOPE)
+    set(${out_dxcompiler} "${_varjoxr_found_dxcompiler}" PARENT_SCOPE)
+    set(${out_dxil} "${_varjoxr_found_dxil}" PARENT_SCOPE)
 endfunction()
 
 function(varjoxr_download_dxc_runtime out_dir)
@@ -191,8 +194,8 @@ function(varjoxr_find_dxc_runtime)
             file(GLOB _downloaded_dxc_candidate_dirs
                 "${_downloaded_dxc_dir}/bin/${_dxc_arch}"
                 "${_downloaded_dxc_dir}/build/native/bin/${_dxc_arch}"
-                "${_downloaded_dxc_dir}/**/bin/${_dxc_arch}"
-                "${_downloaded_dxc_dir}/**/build/native/bin/${_dxc_arch}"
+                "${_downloaded_dxc_dir}/*/bin/${_dxc_arch}"
+                "${_downloaded_dxc_dir}/*/build/native/bin/${_dxc_arch}"
             )
             list(APPEND _dxc_candidate_dirs ${_downloaded_dxc_candidate_dirs})
             varjoxr_find_dxc_runtime_in_dirs(_dxcompiler _dxil ${_dxc_candidate_dirs})
