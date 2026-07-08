@@ -13,11 +13,9 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -225,28 +223,22 @@ std::string BuildUserPixelShader(const std::string& userHlsl) {
     return std::string(kPlaneShaderPreamble) + "\n" + userHlsl;
 }
 
-bool FloatEqual(float a, float b) noexcept {
-    return std::abs(a - b) <= 1.0e-6f;
-}
-
 bool FrameConstantsDescEquals(const TextureProcessingFrameConstantsDesc& a, const TextureProcessingFrameConstantsDesc& b) noexcept {
     return a.enabled == b.enabled && a.registerIndex == b.registerIndex;
 }
 
-bool UserConstantsEquals(const TextureProcessingConstantBuffer& a, const TextureProcessingConstantBuffer& b) noexcept {
-    return a.registerIndex == b.registerIndex && a.data == b.data;
+bool UserConstantsLayoutEquals(const TextureProcessingConstantBuffer& a, const TextureProcessingConstantBuffer& b) noexcept {
+    return a.registerIndex == b.registerIndex && a.data.size() == b.data.size();
 }
 
-bool ProcessingDescEquals(const TextureProcessingDesc& a, const TextureProcessingDesc& b) noexcept {
-    return a.enabled == b.enabled &&
-        a.timing == b.timing &&
-        a.hlsl == b.hlsl &&
+bool ProcessingPipelineDescEquals(const TextureProcessingDesc& a, const TextureProcessingDesc& b) noexcept {
+    return a.hlsl == b.hlsl &&
         a.entryPoint == b.entryPoint &&
         a.target == b.target &&
         a.sourceName == b.sourceName &&
         a.includeDirs == b.includeDirs &&
         a.outputSize == b.outputSize &&
-        UserConstantsEquals(a.userConstants, b.userConstants) &&
+        UserConstantsLayoutEquals(a.userConstants, b.userConstants) &&
         FrameConstantsDescEquals(a.frameConstants, b.frameConstants);
 }
 
@@ -324,8 +316,8 @@ struct D3D12Backend::Impl {
     std::shared_ptr<D3D12Texture> whiteTexture;
 
     struct ProcessingCacheEntry {
-        std::weak_ptr<D3D12Texture> source;
-        TextureProcessingDesc desc{};
+        std::weak_ptr<D3D12Texture> lastDispatchedSource;
+        TextureProcessingDesc pipelineDesc{};
         D3D12CoreLib::ComPtr<ID3D12RootSignature> rootSignature;
         D3D12CoreLib::ComPtr<ID3D12PipelineState> pipelineState;
         std::shared_ptr<D3D12Texture> finalTexture;
@@ -489,14 +481,10 @@ struct D3D12Backend::Impl {
         sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        sampler.MipLODBias = 0.0f;
-        sampler.MaxAnisotropy = 1;
         sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
         sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-        sampler.MinLOD = 0.0f;
         sampler.MaxLOD = FLT_MAX;
         sampler.ShaderRegister = 0;
-        sampler.RegisterSpace = 0;
         sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
         D3D12_ROOT_SIGNATURE_DESC rootDesc{};
@@ -528,14 +516,12 @@ struct D3D12Backend::Impl {
         srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         srvRange.NumDescriptors = 1;
         srvRange.BaseShaderRegister = 0;
-        srvRange.RegisterSpace = 0;
         srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
         D3D12_DESCRIPTOR_RANGE uavRange{};
         uavRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         uavRange.NumDescriptors = 1;
         uavRange.BaseShaderRegister = 0;
-        uavRange.RegisterSpace = 0;
         uavRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
         D3D12_ROOT_PARAMETER parameters[4]{};
@@ -551,18 +537,15 @@ struct D3D12Backend::Impl {
 
         parameters[kProcessingUserConstantsRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[kProcessingUserConstantsRootIndex].Descriptor.ShaderRegister = processing.userConstants.registerIndex;
-        parameters[kProcessingUserConstantsRootIndex].Descriptor.RegisterSpace = 0;
         parameters[kProcessingUserConstantsRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
         parameters[kProcessingFrameConstantsRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[kProcessingFrameConstantsRootIndex].Descriptor.ShaderRegister = processing.frameConstants.registerIndex;
-        parameters[kProcessingFrameConstantsRootIndex].Descriptor.RegisterSpace = 0;
         parameters[kProcessingFrameConstantsRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
         D3D12_ROOT_SIGNATURE_DESC rootDesc{};
         rootDesc.NumParameters = static_cast<UINT>(std::size(parameters));
         rootDesc.pParameters = parameters;
-        rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
         D3D12CoreLib::ComPtr<ID3DBlob> signature;
         D3D12CoreLib::ComPtr<ID3DBlob> error;
@@ -683,17 +666,15 @@ struct D3D12Backend::Impl {
 
     bool ensureTextureProcessingCache(
         const XRMaterial& material,
-        std::shared_ptr<D3D12Texture>& sourceTexture,
+        const std::shared_ptr<D3D12Texture>& sourceTexture,
         ProcessingCacheEntry& cache) {
         const auto& processing = material.processing;
-        const auto cachedSource = cache.source.lock();
-        const bool descMatches = ProcessingDescEquals(cache.desc, processing);
-        const bool sourceMatches = cachedSource.get() == sourceTexture.get();
         const UINT dstWidth = processing.outputSize.x > 0 ? processing.outputSize.x : sourceTexture->width();
         const UINT dstHeight = processing.outputSize.y > 0 ? processing.outputSize.y : sourceTexture->height();
+        const bool pipelineMatches = ProcessingPipelineDescEquals(cache.pipelineDesc, processing);
         const bool outputMatches = cache.finalTexture && cache.finalTexture->width() == dstWidth && cache.finalTexture->height() == dstHeight;
 
-        if (sourceMatches && descMatches && outputMatches && cache.pipelineState && cache.rootSignature && cache.outputUav.IsValid()) {
+        if (pipelineMatches && outputMatches && cache.pipelineState && cache.rootSignature && cache.outputUav.IsValid()) {
             return true;
         }
 
@@ -714,8 +695,7 @@ struct D3D12Backend::Impl {
         }
 
         cache = ProcessingCacheEntry{};
-        cache.source = sourceTexture;
-        cache.desc = processing;
+        cache.pipelineDesc = processing;
         createTextureProcessingPipeline(cache, processing);
 
         const DXGI_FORMAT outputFormat = ResolveProcessingOutputFormat(sourceTexture->resource().GetFormat());
@@ -735,15 +715,23 @@ struct D3D12Backend::Impl {
         const UINT64 userConstantBytes = AlignConstantBufferBytes(processing.userConstants.data.size());
         if (userConstantBytes > 0) {
             cache.alignedUserConstants.assign(static_cast<std::size_t>(userConstantBytes), std::byte{0});
-            std::memcpy(cache.alignedUserConstants.data(), processing.userConstants.data.data(), processing.userConstants.data.size());
             cache.userConstantUpload.Initialize(core->GetDevice(), userConstantBytes);
-            std::memcpy(cache.userConstantUpload.Map(), cache.alignedUserConstants.data(), static_cast<std::size_t>(userConstantBytes));
         }
         if (processing.frameConstants.enabled) {
             cache.frameConstantUpload.Initialize(core->GetDevice(), kConstantBufferAlignment);
         }
         cache.hasDispatched = false;
         return true;
+    }
+
+    void updateUserConstants(const XRMaterial& material, ProcessingCacheEntry& cache) {
+        const auto& data = material.processing.userConstants.data;
+        if (cache.alignedUserConstants.empty() || data.empty()) {
+            return;
+        }
+        std::fill(cache.alignedUserConstants.begin(), cache.alignedUserConstants.end(), std::byte{0});
+        std::memcpy(cache.alignedUserConstants.data(), data.data(), data.size());
+        std::memcpy(cache.userConstantUpload.Map(), cache.alignedUserConstants.data(), cache.alignedUserConstants.size());
     }
 
     std::shared_ptr<D3D12Texture> resolveMaterialTexture(const XRMaterial& material, const FrameContext& frameContext) {
@@ -764,7 +752,10 @@ struct D3D12Backend::Impl {
             return texture;
         }
 
-        const bool skipDispatch = material.processing.timing == ProcessingTiming::OnTextureChanged && cache.hasDispatched;
+        const auto lastSource = cache.lastDispatchedSource.lock();
+        const bool skipDispatch = material.processing.timing == ProcessingTiming::OnTextureChanged &&
+            cache.hasDispatched &&
+            lastSource.get() == texture.get();
         if (!skipDispatch) {
             runTextureProcessing(material, texture, cache, frameContext);
         }
@@ -794,6 +785,7 @@ struct D3D12Backend::Impl {
             cache.output.SetState(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
 
+        updateUserConstants(material, cache);
         if (material.processing.frameConstants.enabled) {
             XRTextureProcessingFrameConstants constants{};
             constants.srcWidth = sourceTexture->width();
@@ -835,6 +827,7 @@ struct D3D12Backend::Impl {
             commandContext.ResourceBarrier(restore);
             srcResource.SetState(srcBefore);
         }
+        cache.lastDispatchedSource = sourceTexture;
         cache.hasDispatched = true;
     }
 
