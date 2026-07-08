@@ -13,7 +13,7 @@ set(VARJOXR_D3D11HELPER_GIT_REPOSITORY "https://github.com/Isasa2357/D3D11Helper
 set(VARJOXR_D3D11HELPER_GIT_TAG "f225641faa621c8c67b7df78f691dbdfed99e8cc" CACHE STRING "Pinned D3D11Helper git commit/tag")
 
 set(VARJOXR_D3D12HELPER_GIT_REPOSITORY "https://github.com/Isasa2357/D3D12Helper.git" CACHE STRING "D3D12Helper git repository")
-set(VARJOXR_D3D12HELPER_GIT_TAG "976fa8b220267df715a26ffb90e2e6f03111d719" CACHE STRING "Pinned D3D12Helper git commit/tag")
+set(VARJOXR_D3D12HELPER_GIT_TAG "d7e9b5761d361cc2f0c4cf998e577a3f3eafbe1e" CACHE STRING "Pinned D3D12Helper git commit/tag")
 
 set(VARJOXR_GLM_GIT_REPOSITORY "https://github.com/g-truc/glm.git" CACHE STRING "glm git repository")
 set(VARJOXR_GLM_GIT_TAG "1.0.3" CACHE STRING "Pinned glm git tag")
