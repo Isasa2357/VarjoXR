@@ -52,6 +52,22 @@ inline std::vector<std::uint8_t> MakeGradientRgba(std::uint32_t width, std::uint
     return rgba;
 }
 
+inline std::filesystem::path ShaderDirectory() {
+#ifdef VARJOXR_PROGRAMMABLE_PROCESSING_HLSL_DIR
+    return std::filesystem::path(VARJOXR_PROGRAMMABLE_PROCESSING_HLSL_DIR);
+#else
+    return std::filesystem::path(".");
+#endif
+}
+
+inline std::filesystem::path VarjoXrHlslDirectory() {
+#ifdef VARJOXR_HLSL_DIR
+    return std::filesystem::path(VARJOXR_HLSL_DIR);
+#else
+    return std::filesystem::path(".");
+#endif
+}
+
 inline VarjoXR::TextureProcessingDesc MakeCircleDarkenProcessing(
     const std::filesystem::path& shaderDirectory,
     const CircleDarkenConstants& constants,
@@ -63,6 +79,7 @@ inline VarjoXR::TextureProcessingDesc MakeCircleDarkenProcessing(
     processing.entryPoint = "main";
     processing.target = "cs_5_0";
     processing.sourceName = "CircleDarkenPreprocess.hlsl";
+    processing.includeDirs.push_back(VarjoXrHlslDirectory());
     processing.outputSize = outputSize;
 
     processing.userConstants.registerIndex = 0; // b0
@@ -78,14 +95,6 @@ inline double SecondsSinceStart() {
     static const auto start = clock::now();
     const auto now = clock::now();
     return std::chrono::duration<double>(now - start).count();
-}
-
-inline std::filesystem::path ShaderDirectory() {
-#ifdef VARJOXR_PROGRAMMABLE_PROCESSING_HLSL_DIR
-    return std::filesystem::path(VARJOXR_PROGRAMMABLE_PROCESSING_HLSL_DIR);
-#else
-    return std::filesystem::path(".");
-#endif
 }
 
 } // namespace ProgrammableProcessingSample
