@@ -9,6 +9,8 @@ if(MSVC AND VARJOXR_ENABLE_WARNINGS)
     target_compile_options(VarjoXRCoreTests PRIVATE /utf-8 /W4 /permissive-)
 endif()
 
+varjoxr_copy_dxc_runtime(VarjoXRCoreTests)
+
 add_test(NAME VarjoXRCoreTests COMMAND VarjoXRCoreTests)
 
 add_executable(VarjoXRBackendSmokeTests
@@ -21,6 +23,8 @@ target_compile_features(VarjoXRBackendSmokeTests PRIVATE cxx_std_17)
 if(MSVC AND VARJOXR_ENABLE_WARNINGS)
     target_compile_options(VarjoXRBackendSmokeTests PRIVATE /utf-8 /W4 /permissive-)
 endif()
+
+varjoxr_copy_dxc_runtime(VarjoXRBackendSmokeTests)
 
 add_test(NAME VarjoXRBackendSmokeTests COMMAND VarjoXRBackendSmokeTests)
 
