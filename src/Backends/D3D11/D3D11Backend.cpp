@@ -20,8 +20,8 @@
 #include <vector>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <glm/gtx/quaternion.hpp>
 
 #include <windows.h>
 
@@ -150,6 +150,22 @@ glm::mat4 Mat4FromVarjo(const varjo_Matrix& matrix) noexcept {
     glm::mat4 out(1.0f);
     for (int i = 0; i < 16; ++i) {
         glm::value_ptr(out)[i] = static_cast<float>(matrix.value[i]);
+    }
+    return out;
+}
+
+glm::mat4 Mat4FromArray(const double values[16]) noexcept {
+    glm::mat4 out(1.0f);
+    for (int i = 0; i < 16; ++i) {
+        glm::value_ptr(out)[i] = static_cast<float>(values[i]);
+    }
+    return out;
+}
+
+varjo_Matrix VarjoMatrixFromArray(const double values[16]) noexcept {
+    varjo_Matrix out{};
+    for (int i = 0; i < 16; ++i) {
+        out.value[i] = values[i];
     }
     return out;
 }
@@ -435,7 +451,7 @@ struct D3D11Backend::Impl {
 
         for (int32_t i = 0; i < frameInfo->viewCount(); ++i) {
             const auto& view = frameInfo->view(i);
-            const glm::mat4 eyePose = glm::inverse(Mat4FromVarjo(view.viewMatrix));
+            const glm::mat4 eyePose = glm::inverse(Mat4FromArray(view.viewMatrix));
             positionSum += glm::vec3(eyePose[3]);
             if (!rotationSet) {
                 rotation = glm::quat_cast(eyePose);
@@ -446,7 +462,7 @@ struct D3D11Backend::Impl {
 
         if (count > 0) {
             const glm::vec3 position = positionSum / static_cast<float>(count);
-            head = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(rotation);
+            head = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(rotation);
         }
         return head;
     }
@@ -486,16 +502,18 @@ struct D3D11Backend::Impl {
             varjo_SwapChainViewport layerViewport = swapChain->fullViewport(viewIndex);
             layerViewport.width = std::max(1, viewInfo.preferredWidth);
             layerViewport.height = std::max(1, viewInfo.preferredHeight);
+            const varjo_Matrix projection = VarjoMatrixFromArray(viewInfo.projectionMatrix);
+            const varjo_Matrix view = VarjoMatrixFromArray(viewInfo.viewMatrix);
             multiProjLayer->setView(
                 static_cast<size_t>(viewIndex),
-                viewInfo.projectionMatrix,
-                viewInfo.viewMatrix,
+                projection,
+                view,
                 layerViewport,
                 nullptr);
 
             const Eye eye = EyeFromDescription(viewDescriptions[static_cast<size_t>(viewIndex)]);
-            const glm::mat4 viewMatrix = Mat4FromVarjo(viewInfo.viewMatrix);
-            const glm::mat4 projectionMatrix = Mat4FromVarjo(viewInfo.projectionMatrix);
+            const glm::mat4 viewMatrix = Mat4FromArray(viewInfo.viewMatrix);
+            const glm::mat4 projectionMatrix = Mat4FromArray(viewInfo.projectionMatrix);
 
             for (const auto& plane : planes) {
                 if (!plane) continue;
