@@ -10,7 +10,7 @@ set(VARJOXR_VARJOTOOLKIT_GIT_REPOSITORY "https://github.com/Isasa2357/VarjoToolk
 set(VARJOXR_VARJOTOOLKIT_GIT_TAG "90fd18c941b32440e5e0f4b067c262593f99c3a0" CACHE STRING "Pinned VarjoToolkit git commit/tag")
 
 set(VARJOXR_D3D11HELPER_GIT_REPOSITORY "https://github.com/Isasa2357/D3D11Helper.git" CACHE STRING "D3D11Helper git repository")
-set(VARJOXR_D3D11HELPER_GIT_TAG "f225641faa621c8c67b7df78f691dbdfed99e8cc" CACHE STRING "Pinned D3D11Helper git commit/tag")
+set(VARJOXR_D3D11HELPER_GIT_TAG "fdb76fd36668bff6a094645897939c11b93369b0" CACHE STRING "Pinned D3D11Helper git commit/tag")
 
 set(VARJOXR_D3D12HELPER_GIT_REPOSITORY "https://github.com/Isasa2357/D3D12Helper.git" CACHE STRING "D3D12Helper git repository")
 set(VARJOXR_D3D12HELPER_GIT_TAG "af136edb5985af06dbce1a57ffa50b8bc9f167de" CACHE STRING "Pinned D3D12Helper git commit/tag")
