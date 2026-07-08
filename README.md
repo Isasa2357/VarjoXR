@@ -21,6 +21,7 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 - D3D11 / D3D12 executable output への `dxcompiler.dll` / `dxil.dll` 自動コピー
 - Varjo Runtime なしで実行可能な core unit tests
 - backend compile/smoke tests
+- D3D11 / D3D12 shader linkage + offscreen UV propagation tests
 - RenderingPlane samples: 01〜08
 
 ## 依存関係
@@ -350,6 +351,8 @@ cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane
 ## Tests
 
 Core tests and backend compile/smoke tests can run without HMD. `VarjoXRBackendSmokeTests` validates backend types and default backend descriptors without creating a Varjo session or a D3D device.
+
+`VarjoXRShaderLinkageTests` creates D3D11 / D3D12 devices without HMD, compiles the legacy `main(float2 uv : TEXCOORD0)` pixel shader form, creates a graphics pipeline, draws a 4x4 offscreen render target, reads it back, and verifies that UV-dependent red/green values vary across the image. This catches VS/PS linkage and UV propagation regressions that compile-only tests can miss.
 
 When `VARJOXR_BUILD_SAMPLES=ON`, CTest also registers `Build_<target>` tests for the RenderingPlane and ProgrammableProcessing sample targets. These tests invoke `cmake --build` for each sample target and are marked `RUN_SERIAL` to avoid concurrent builds in the same build directory.
 
