@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <vector>
 
 #include <D3D12Helper/D3D12Core/D3D12Core.hpp>
+#include <D3D12Helper/D3D12Core/ThrowIfFailed.hpp>
 #include <D3D12Helper/D3D12Gpu/D3D12Gpu.hpp>
 #include <D3D12Helper/D3D12Processing/D3D12Processing.hpp>
 
