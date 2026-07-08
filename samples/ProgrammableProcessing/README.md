@@ -12,7 +12,13 @@ source texture
   -> Varjo swapchain
 ```
 
-The sample uses `Shaders/CircleDarkenPreprocess.hlsl` and the following binding convention:
+The sample uses `Shaders/CircleDarkenPreprocess.hlsl`. The common VarjoXR processing declarations are provided by:
+
+```hlsl
+#include "VarjoXR/TextureProcessing.hlsli"
+```
+
+The binding convention is:
 
 ```text
 t0: input texture SRV
@@ -39,6 +45,7 @@ VarjoXR::TextureProcessingDesc processing{};
 processing.enabled = true;
 processing.timing = VarjoXR::ProcessingTiming::BeforeRenderEachFrame;
 processing.hlsl = LoadTextFile("CircleDarkenPreprocess.hlsl");
+processing.includeDirs.push_back(VarjoXrHlslDirectory());
 processing.userConstants.registerIndex = 0;
 processing.userConstants.set(constants);
 processing.frameConstants.enabled = true;
