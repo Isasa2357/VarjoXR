@@ -132,6 +132,12 @@ function(varjoxr_collect_dxc_candidate_dirs out_dirs)
         "${CMAKE_BINARY_DIR}/packages/microsoft.direct3d.dxc*/build/native/bin/${_dxc_arch}"
         "${CMAKE_BINARY_DIR}/packages/Microsoft.Direct3D.DXC*/*/bin/${_dxc_arch}"
         "${CMAKE_BINARY_DIR}/packages/Microsoft.Direct3D.DXC*/*/build/native/bin/${_dxc_arch}"
+        "${PROJECT_SOURCE_DIR}/out/build/*/packages/Microsoft.Direct3D.DXC*/bin/${_dxc_arch}"
+        "${PROJECT_SOURCE_DIR}/out/build/*/packages/microsoft.direct3d.dxc*/bin/${_dxc_arch}"
+        "${PROJECT_SOURCE_DIR}/out/build/*/packages/Microsoft.Direct3D.DXC*/build/native/bin/${_dxc_arch}"
+        "${PROJECT_SOURCE_DIR}/out/build/*/packages/microsoft.direct3d.dxc*/build/native/bin/${_dxc_arch}"
+        "${PROJECT_SOURCE_DIR}/out/build/*/packages/Microsoft.Direct3D.DXC*/*/bin/${_dxc_arch}"
+        "${PROJECT_SOURCE_DIR}/out/build/*/packages/Microsoft.Direct3D.DXC*/*/build/native/bin/${_dxc_arch}"
     )
     list(APPEND _dxc_candidate_dirs ${_local_package_dirs})
 
