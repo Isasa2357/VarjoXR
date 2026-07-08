@@ -3,7 +3,7 @@ include(FetchContent)
 option(VARJOXR_FETCH_DEPENDENCIES "Automatically fetch non-Varjo-SDK dependencies" ON)
 
 set(VARJOXR_VARJOTOOLKIT_GIT_REPOSITORY "https://github.com/Isasa2357/VarjoToolkit.git" CACHE STRING "VarjoToolkit git repository")
-set(VARJOXR_VARJOTOOLKIT_GIT_TAG "8aae6f95b2a3252d2ad6210638555adfb5e0cc3a" CACHE STRING "Pinned VarjoToolkit git commit/tag")
+set(VARJOXR_VARJOTOOLKIT_GIT_TAG "90fd18c941b32440e5e0f4b067c262593f99c3a0" CACHE STRING "Pinned VarjoToolkit git commit/tag")
 
 set(VARJOXR_D3D11HELPER_GIT_REPOSITORY "https://github.com/Isasa2357/D3D11Helper.git" CACHE STRING "D3D11Helper git repository")
 set(VARJOXR_D3D11HELPER_GIT_TAG "f225641faa621c8c67b7df78f691dbdfed99e8cc" CACHE STRING "Pinned D3D11Helper git commit/tag")
