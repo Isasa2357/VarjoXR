@@ -1,6 +1,7 @@
 #include <VarjoXR/VarjoXR.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -64,17 +65,32 @@ void testPlacementAndProcessingDesc() {
     plane.setPlacementMode(VarjoXR::PlacementMode::HeadRelative);
     require(plane.placementMode() == VarjoXR::PlacementMode::HeadRelative, "placement mode mismatch");
 
+    struct MyConstants {
+        float centerX;
+        float centerY;
+        float radius;
+        float darken;
+    };
+
+    MyConstants constants{0.5f, 0.5f, 0.25f, 0.5f};
+
     VarjoXR::TextureProcessingDesc processing{};
     processing.enabled = true;
     processing.timing = VarjoXR::ProcessingTiming::BeforeRenderEachFrame;
     processing.hlsl = "[numthreads(8,8,1)] void main(uint3 id:SV_DispatchThreadID){}\n";
     processing.outputSize = {640, 480};
-    processing.params0 = {1.0f, 2.0f, 3.0f, 4.0f};
+    processing.userConstants.registerIndex = 0;
+    processing.userConstants.set(constants);
+    processing.frameConstants.enabled = true;
+    processing.frameConstants.registerIndex = 1;
+
     plane.setProcessing(VarjoXR::Eye::Left, processing);
     require(plane.material(VarjoXR::Eye::Left).processing.enabled, "processing enabled mismatch");
     require(plane.material(VarjoXR::Eye::Left).processing.timing == VarjoXR::ProcessingTiming::BeforeRenderEachFrame,
             "processing timing mismatch");
     require(plane.material(VarjoXR::Eye::Left).processing.outputSize.x == 640, "processing output width mismatch");
+    require(plane.material(VarjoXR::Eye::Left).processing.userConstants.data.size() == sizeof(MyConstants),
+            "processing user constant bytes mismatch");
     require(!plane.material(VarjoXR::Eye::Right).processing.enabled, "right processing should remain default");
 }
 
