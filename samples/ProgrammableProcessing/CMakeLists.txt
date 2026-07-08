@@ -18,6 +18,7 @@ if(VARJOXR_ENABLE_D3D11)
         target_compile_options(ProgrammableProcessing_D3D11 PRIVATE /utf-8 /EHsc)
     endif()
     varjoxr_copy_varjo_runtime(ProgrammableProcessing_D3D11)
+    varjoxr_copy_dxc_runtime(ProgrammableProcessing_D3D11)
 endif()
 
 if(VARJOXR_ENABLE_D3D12)
