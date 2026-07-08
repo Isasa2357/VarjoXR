@@ -13,7 +13,11 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -45,6 +49,14 @@ struct PlaneConstants {
     float frameParams[4];
 };
 
+struct XRTextureProcessingFrameConstants {
+    uint32_t srcWidth = 0;
+    uint32_t srcHeight = 0;
+    uint32_t dstWidth = 0;
+    uint32_t dstHeight = 0;
+    float frameParams[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+};
+
 constexpr PlaneVertex kPlaneVertices[] = {
     {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f}},
     {{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f}},
@@ -57,6 +69,13 @@ constexpr UINT kPlaneIndexCount = static_cast<UINT>(sizeof(kPlaneIndices) / size
 constexpr UINT64 kConstantBufferAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
 constexpr UINT64 kMaxPlaneDrawsPerFrame = 1024;
 constexpr UINT64 kPlaneConstantStride = (sizeof(PlaneConstants) + kConstantBufferAlignment - 1) & ~(kConstantBufferAlignment - 1);
+constexpr UINT kTextureProcessingThreadGroupSizeX = 8;
+constexpr UINT kTextureProcessingThreadGroupSizeY = 8;
+
+constexpr UINT kProcessingSrvTableRootIndex = 0;
+constexpr UINT kProcessingUavTableRootIndex = 1;
+constexpr UINT kProcessingUserConstantsRootIndex = 2;
+constexpr UINT kProcessingFrameConstantsRootIndex = 3;
 
 constexpr const char* kPlaneVertexShader = R"hlsl(
 cbuffer PlaneConstants : register(b0)
@@ -147,6 +166,20 @@ DXGI_FORMAT ResolveDxgiFormat(varjo_TextureFormat format) noexcept {
     }
 }
 
+DXGI_FORMAT ResolveProcessingOutputFormat(DXGI_FORMAT inputFormat) noexcept {
+    switch (inputFormat) {
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+    case DXGI_FORMAT_UNKNOWN:
+    default:
+        return DXGI_FORMAT_R8G8B8A8_UNORM;
+    }
+}
+
 Eye EyeFromDescription(const varjo_ViewDescription& desc) noexcept {
     return desc.eye == varjo_Eye_Right ? Eye::Right : Eye::Left;
 }
@@ -190,6 +223,48 @@ std::string BuildUserPixelShader(const std::string& userHlsl) {
         return kDefaultPlanePixelShader;
     }
     return std::string(kPlaneShaderPreamble) + "\n" + userHlsl;
+}
+
+bool FloatEqual(float a, float b) noexcept {
+    return std::abs(a - b) <= 1.0e-6f;
+}
+
+bool FrameConstantsDescEquals(const TextureProcessingFrameConstantsDesc& a, const TextureProcessingFrameConstantsDesc& b) noexcept {
+    return a.enabled == b.enabled && a.registerIndex == b.registerIndex;
+}
+
+bool UserConstantsEquals(const TextureProcessingConstantBuffer& a, const TextureProcessingConstantBuffer& b) noexcept {
+    return a.registerIndex == b.registerIndex && a.data == b.data;
+}
+
+bool ProcessingDescEquals(const TextureProcessingDesc& a, const TextureProcessingDesc& b) noexcept {
+    return a.enabled == b.enabled &&
+        a.timing == b.timing &&
+        a.hlsl == b.hlsl &&
+        a.entryPoint == b.entryPoint &&
+        a.target == b.target &&
+        a.sourceName == b.sourceName &&
+        a.includeDirs == b.includeDirs &&
+        a.outputSize == b.outputSize &&
+        UserConstantsEquals(a.userConstants, b.userConstants) &&
+        FrameConstantsDescEquals(a.frameConstants, b.frameConstants);
+}
+
+UINT CeilDiv(UINT value, UINT divisor) noexcept {
+    return (value + divisor - 1u) / divisor;
+}
+
+UINT64 AlignConstantBufferBytes(std::size_t sizeBytes) {
+    if (sizeBytes == 0) {
+        return 0;
+    }
+    return (static_cast<UINT64>(sizeBytes) + kConstantBufferAlignment - 1) & ~(kConstantBufferAlignment - 1);
+}
+
+void ValidateConstantRegisterIndex(uint32_t registerIndex, const char* label) {
+    if (registerIndex >= D3D12_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT) {
+        throw std::runtime_error(std::string(label) + " register index exceeds D3D12 constant buffer slots.");
+    }
 }
 
 D3D12_RESOURCE_BARRIER MakeTransition(
@@ -247,6 +322,22 @@ struct D3D12Backend::Impl {
     D3D12_INDEX_BUFFER_VIEW indexBufferView{};
     UINT64 constantOffset = 0;
     std::shared_ptr<D3D12Texture> whiteTexture;
+
+    struct ProcessingCacheEntry {
+        std::weak_ptr<D3D12Texture> source;
+        TextureProcessingDesc desc{};
+        D3D12CoreLib::ComPtr<ID3D12RootSignature> rootSignature;
+        D3D12CoreLib::ComPtr<ID3D12PipelineState> pipelineState;
+        std::shared_ptr<D3D12Texture> finalTexture;
+        D3D12CoreLib::D3D12Resource output;
+        D3D12CoreLib::D3D12DescriptorHandle outputSrv{};
+        D3D12CoreLib::D3D12DescriptorHandle outputUav{};
+        D3D12CoreLib::D3D12UploadBuffer userConstantUpload;
+        D3D12CoreLib::D3D12UploadBuffer frameConstantUpload;
+        std::vector<std::byte> alignedUserConstants;
+        bool hasDispatched = false;
+    };
+    std::unordered_map<const XRMaterial*, ProcessingCacheEntry> processingCache;
 
     D3D12CoreLib::ComPtr<ID3D12RootSignature> rootSignature;
     D3D12CoreLib::ShaderBytecode vertexShaderBytecode;
@@ -432,6 +523,67 @@ struct D3D12Backend::Impl {
             IID_PPV_ARGS(rootSignature.GetAddressOf())));
     }
 
+    D3D12CoreLib::ComPtr<ID3D12RootSignature> createTextureProcessingRootSignature(const TextureProcessingDesc& processing) {
+        D3D12_DESCRIPTOR_RANGE srvRange{};
+        srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        srvRange.NumDescriptors = 1;
+        srvRange.BaseShaderRegister = 0;
+        srvRange.RegisterSpace = 0;
+        srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_DESCRIPTOR_RANGE uavRange{};
+        uavRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        uavRange.NumDescriptors = 1;
+        uavRange.BaseShaderRegister = 0;
+        uavRange.RegisterSpace = 0;
+        uavRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_ROOT_PARAMETER parameters[4]{};
+        parameters[kProcessingSrvTableRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[kProcessingSrvTableRootIndex].DescriptorTable.NumDescriptorRanges = 1;
+        parameters[kProcessingSrvTableRootIndex].DescriptorTable.pDescriptorRanges = &srvRange;
+        parameters[kProcessingSrvTableRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        parameters[kProcessingUavTableRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[kProcessingUavTableRootIndex].DescriptorTable.NumDescriptorRanges = 1;
+        parameters[kProcessingUavTableRootIndex].DescriptorTable.pDescriptorRanges = &uavRange;
+        parameters[kProcessingUavTableRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        parameters[kProcessingUserConstantsRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        parameters[kProcessingUserConstantsRootIndex].Descriptor.ShaderRegister = processing.userConstants.registerIndex;
+        parameters[kProcessingUserConstantsRootIndex].Descriptor.RegisterSpace = 0;
+        parameters[kProcessingUserConstantsRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        parameters[kProcessingFrameConstantsRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        parameters[kProcessingFrameConstantsRootIndex].Descriptor.ShaderRegister = processing.frameConstants.registerIndex;
+        parameters[kProcessingFrameConstantsRootIndex].Descriptor.RegisterSpace = 0;
+        parameters[kProcessingFrameConstantsRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_ROOT_SIGNATURE_DESC rootDesc{};
+        rootDesc.NumParameters = static_cast<UINT>(std::size(parameters));
+        rootDesc.pParameters = parameters;
+        rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+        D3D12CoreLib::ComPtr<ID3DBlob> signature;
+        D3D12CoreLib::ComPtr<ID3DBlob> error;
+        const HRESULT hr = D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+        if (FAILED(hr)) {
+            if (error) {
+                OutputDebugStringA(static_cast<const char*>(error->GetBufferPointer()));
+                OutputDebugStringA("\n");
+            }
+            D3D12CoreLib::ThrowIfFailed(hr, "D3D12SerializeRootSignature for texture processing failed");
+        }
+
+        D3D12CoreLib::ComPtr<ID3D12RootSignature> result;
+        D3D12CORE_THROW_IF_FAILED(core->GetDevice()->CreateRootSignature(
+            0,
+            signature->GetBufferPointer(),
+            signature->GetBufferSize(),
+            IID_PPV_ARGS(result.GetAddressOf())));
+        return result;
+    }
+
     void createWhiteTexture() {
         const uint8_t white[4] = {255, 255, 255, 255};
         whiteTexture = createTextureFromRGBA(white, 1, 1, 4);
@@ -504,6 +656,186 @@ struct D3D12Backend::Impl {
             OutputDebugStringA("\n");
             return *defaultPipeline;
         }
+    }
+
+    D3D12CoreLib::ShaderBytecode compileTextureProcessingShader(const TextureProcessingDesc& processing) {
+        D3D12CoreLib::ShaderCompileDesc compileDesc{};
+        compileDesc.entryPoint = processing.entryPoint.empty() ? "main" : processing.entryPoint;
+        compileDesc.target = processing.target.empty() ? "cs_5_1" : processing.target;
+        compileDesc.includeDirs = processing.includeDirs;
+        compileDesc.useDxc = false;
+        return D3D12CoreLib::CompileShaderFromSource(
+            processing.hlsl,
+            compileDesc,
+            processing.sourceName.empty() ? "VarjoXR_TextureProcessing.hlsl" : processing.sourceName);
+    }
+
+    void createTextureProcessingPipeline(ProcessingCacheEntry& cache, const TextureProcessingDesc& processing) {
+        auto bytecode = compileTextureProcessingShader(processing);
+        cache.rootSignature = createTextureProcessingRootSignature(processing);
+        D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineDesc{};
+        pipelineDesc.pRootSignature = cache.rootSignature.Get();
+        pipelineDesc.CS = bytecode.AsD3D12();
+        D3D12CORE_THROW_IF_FAILED(core->GetDevice()->CreateComputePipelineState(
+            &pipelineDesc,
+            IID_PPV_ARGS(cache.pipelineState.GetAddressOf())));
+    }
+
+    bool ensureTextureProcessingCache(
+        const XRMaterial& material,
+        std::shared_ptr<D3D12Texture>& sourceTexture,
+        ProcessingCacheEntry& cache) {
+        const auto& processing = material.processing;
+        const auto cachedSource = cache.source.lock();
+        const bool descMatches = ProcessingDescEquals(cache.desc, processing);
+        const bool sourceMatches = cachedSource.get() == sourceTexture.get();
+        const UINT dstWidth = processing.outputSize.x > 0 ? processing.outputSize.x : sourceTexture->width();
+        const UINT dstHeight = processing.outputSize.y > 0 ? processing.outputSize.y : sourceTexture->height();
+        const bool outputMatches = cache.finalTexture && cache.finalTexture->width() == dstWidth && cache.finalTexture->height() == dstHeight;
+
+        if (sourceMatches && descMatches && outputMatches && cache.pipelineState && cache.rootSignature && cache.outputUav.IsValid()) {
+            return true;
+        }
+
+        if (processing.hlsl.empty()) {
+            OutputDebugStringA("[VarjoXR][D3D12] Texture processing is enabled but no HLSL was supplied. Using source texture.\n");
+            return false;
+        }
+        if (!processing.userConstants.data.empty() &&
+            processing.frameConstants.enabled &&
+            processing.userConstants.registerIndex == processing.frameConstants.registerIndex) {
+            throw std::runtime_error("Texture processing user constant buffer register collides with VarjoXR frame constants register.");
+        }
+        if (!processing.userConstants.data.empty()) {
+            ValidateConstantRegisterIndex(processing.userConstants.registerIndex, "Texture processing user constants");
+        }
+        if (processing.frameConstants.enabled) {
+            ValidateConstantRegisterIndex(processing.frameConstants.registerIndex, "Texture processing frame constants");
+        }
+
+        cache = ProcessingCacheEntry{};
+        cache.source = sourceTexture;
+        cache.desc = processing;
+        createTextureProcessingPipeline(cache, processing);
+
+        const DXGI_FORMAT outputFormat = ResolveProcessingOutputFormat(sourceTexture->resource().GetFormat());
+        cache.output = D3D12CoreLib::CreateTexture2D(
+            *core,
+            dstWidth,
+            dstHeight,
+            outputFormat,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        cache.outputSrv = cbvSrvUavAllocator.Allocate();
+        cache.outputUav = cbvSrvUavAllocator.Allocate();
+        D3D12CoreLib::CreateTexture2DSrv(*core, cache.output, cache.outputSrv.cpu, outputFormat);
+        D3D12CoreLib::CreateTexture2DUav(*core, cache.output, cache.outputUav.cpu, outputFormat);
+        cache.finalTexture = std::make_shared<D3D12Texture>(cache.output, cache.outputSrv, dstWidth, dstHeight, TextureOwnership::Owned);
+
+        const UINT64 userConstantBytes = AlignConstantBufferBytes(processing.userConstants.data.size());
+        if (userConstantBytes > 0) {
+            cache.alignedUserConstants.assign(static_cast<std::size_t>(userConstantBytes), std::byte{0});
+            std::memcpy(cache.alignedUserConstants.data(), processing.userConstants.data.data(), processing.userConstants.data.size());
+            cache.userConstantUpload.Initialize(core->GetDevice(), userConstantBytes);
+            std::memcpy(cache.userConstantUpload.Map(), cache.alignedUserConstants.data(), static_cast<std::size_t>(userConstantBytes));
+        }
+        if (processing.frameConstants.enabled) {
+            cache.frameConstantUpload.Initialize(core->GetDevice(), kConstantBufferAlignment);
+        }
+        cache.hasDispatched = false;
+        return true;
+    }
+
+    std::shared_ptr<D3D12Texture> resolveMaterialTexture(const XRMaterial& material, const FrameContext& frameContext) {
+        auto texture = std::dynamic_pointer_cast<D3D12Texture>(material.texture);
+        if (!texture || !texture->srv().IsValid()) {
+            return whiteTexture;
+        }
+        if (!material.processing.enabled) {
+            return texture;
+        }
+        if (!texture->resource()) {
+            OutputDebugStringA("[VarjoXR][D3D12] Programmable texture processing requires an ID3D12Resource-backed texture. Passing through.\n");
+            return texture;
+        }
+
+        auto& cache = processingCache[&material];
+        if (!ensureTextureProcessingCache(material, texture, cache)) {
+            return texture;
+        }
+
+        const bool skipDispatch = material.processing.timing == ProcessingTiming::OnTextureChanged && cache.hasDispatched;
+        if (!skipDispatch) {
+            runTextureProcessing(material, texture, cache, frameContext);
+        }
+        return cache.finalTexture ? cache.finalTexture : texture;
+    }
+
+    void runTextureProcessing(
+        const XRMaterial& material,
+        const std::shared_ptr<D3D12Texture>& sourceTexture,
+        ProcessingCacheEntry& cache,
+        const FrameContext& frameContext) {
+        if (!cache.rootSignature || !cache.pipelineState || !cache.finalTexture || !cache.outputUav.IsValid()) {
+            return;
+        }
+
+        auto* cmd = commandContext.GetCommandList();
+        auto& srcResource = sourceTexture->resource();
+        const D3D12_RESOURCE_STATES srcBefore = srcResource.GetState();
+        if (srcBefore != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+            auto barrier = MakeTransition(srcResource.Get(), srcBefore, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            commandContext.ResourceBarrier(barrier);
+            srcResource.SetState(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
+        if (cache.output.GetState() != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+            auto barrier = MakeTransition(cache.output.Get(), cache.output.GetState(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            commandContext.ResourceBarrier(barrier);
+            cache.output.SetState(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        }
+
+        if (material.processing.frameConstants.enabled) {
+            XRTextureProcessingFrameConstants constants{};
+            constants.srcWidth = sourceTexture->width();
+            constants.srcHeight = sourceTexture->height();
+            constants.dstWidth = cache.finalTexture->width();
+            constants.dstHeight = cache.finalTexture->height();
+            constants.frameParams[0] = frameContext.gazeUv.x;
+            constants.frameParams[1] = frameContext.gazeUv.y;
+            constants.frameParams[2] = static_cast<float>(frameContext.timeSeconds);
+            constants.frameParams[3] = static_cast<float>(frameContext.frameNumber);
+            std::memcpy(cache.frameConstantUpload.Map(), &constants, sizeof(constants));
+        }
+
+        cmd->SetPipelineState(cache.pipelineState.Get());
+        cmd->SetComputeRootSignature(cache.rootSignature.Get());
+        cmd->SetComputeRootDescriptorTable(kProcessingSrvTableRootIndex, sourceTexture->srv().gpu);
+        cmd->SetComputeRootDescriptorTable(kProcessingUavTableRootIndex, cache.outputUav.gpu);
+        if (!cache.alignedUserConstants.empty()) {
+            cmd->SetComputeRootConstantBufferView(
+                kProcessingUserConstantsRootIndex,
+                cache.userConstantUpload.Get()->GetGPUVirtualAddress());
+        }
+        if (material.processing.frameConstants.enabled) {
+            cmd->SetComputeRootConstantBufferView(
+                kProcessingFrameConstantsRootIndex,
+                cache.frameConstantUpload.Get()->GetGPUVirtualAddress());
+        }
+
+        const UINT groupsX = CeilDiv(cache.finalTexture->width(), kTextureProcessingThreadGroupSizeX);
+        const UINT groupsY = CeilDiv(cache.finalTexture->height(), kTextureProcessingThreadGroupSizeY);
+        cmd->Dispatch(groupsX, groupsY, 1);
+
+        auto outputToSrv = MakeTransition(cache.output.Get(), cache.output.GetState(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        commandContext.ResourceBarrier(outputToSrv);
+        cache.output.SetState(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+        if (srcBefore != srcResource.GetState()) {
+            auto restore = MakeTransition(srcResource.Get(), srcResource.GetState(), srcBefore);
+            commandContext.ResourceBarrier(restore);
+            srcResource.SetState(srcBefore);
+        }
+        cache.hasDispatched = true;
     }
 
     void beginFrame() {
@@ -643,6 +975,7 @@ struct D3D12Backend::Impl {
         const FrameContext& frameContext) {
         auto* cmd = commandContext.GetCommandList();
         const XRMaterial& material = plane.material(eye);
+        auto texture = resolveMaterialTexture(material, frameContext);
         auto& pipeline = pipelineFor(material);
         pipeline.Bind(cmd);
 
@@ -667,7 +1000,6 @@ struct D3D12Backend::Impl {
         const D3D12_GPU_VIRTUAL_ADDRESS cbv = constantUpload.Get()->GetGPUVirtualAddress() + constantOffset;
         constantOffset += kPlaneConstantStride;
 
-        auto texture = std::dynamic_pointer_cast<D3D12Texture>(material.texture);
         if (!texture || !texture->srv().IsValid()) {
             texture = whiteTexture;
         }
