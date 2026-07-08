@@ -19,19 +19,8 @@ if(NOT WIN32)
     message(WARNING "VarjoXR targets Varjo Native SDK and Direct3D. Non-Windows builds only support configure-time inspection.")
 endif()
 
-if(NOT TARGET VarjoToolkit::VarjoToolkit)
-    find_package(VarjoToolkit 0.2.0 EXACT CONFIG REQUIRED)
-endif()
-
-find_package(glm CONFIG REQUIRED)
-
-if(VARJOXR_ENABLE_D3D11 AND NOT TARGET D3D11Helper::D3D11Helper)
-    find_package(D3D11Helper 1.12.0 EXACT CONFIG REQUIRED)
-endif()
-
-if(VARJOXR_ENABLE_D3D12 AND NOT TARGET D3D12Helper::D3D12Helper)
-    find_package(D3D12Helper 1.12.0 EXACT CONFIG REQUIRED)
-endif()
+include(cmake/VarjoXRDependencies.cmake)
+varjoxr_resolve_dependencies()
 
 set(VARJOXR_PUBLIC_HEADERS
     include/VarjoXR/VarjoXR.hpp
