@@ -18,6 +18,7 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 - D3D11 `ID3D11Texture2D` / `ID3D11ShaderResourceView` wrapper
 - D3D12 `ID3D12Resource` wrapper
 - programmable texture processing prepass
+- D3D12 executable outputへの `dxcompiler.dll` / `dxil.dll` 自動コピー
 - Varjo Runtimeなしで実行可能な core unit tests
 - backend compile/smoke tests
 - RenderingPlane samples: 01〜06
@@ -33,6 +34,7 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 - D3D11Helper
 - D3D12Helper
 - glm
+- DirectX Shader Compiler runtime: `dxcompiler.dll`, usually with `dxil.dll`
 
 使用しないもの:
 
@@ -48,8 +50,23 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 | `VARJOXR_BUILD_TESTS` | `ON` | CTest用のcore testsをビルドする |
 | `VARJOXR_ENABLE_D3D11` | `ON` | D3D11 backendをビルドする |
 | `VARJOXR_ENABLE_D3D12` | `ON` | D3D12 backendをビルドする |
+| `VARJOXR_COPY_DXC_RUNTIME` | `ON` | D3D12 executableの出力先へ `dxcompiler.dll` / `dxil.dll` をコピーする |
+| `VARJOXR_DXC_RUNTIME_DIR` | empty | `dxcompiler.dll` / `dxil.dll` があるディレクトリ。自動検出できない場合に指定する |
+| `D3D12HELPER_DXC_RUNTIME_DIR` | empty | D3D12Helper側のDXC runtime探索にも使える互換指定 |
 | `VARJOXR_VARJO_INCLUDE_DIR` | empty | `Varjo.h` などがあるinclude directory |
 | `VARJOXR_VARJO_LIBRARY` | empty | `VarjoLib.lib` のパス |
+
+`VARJOXR_DXC_RUNTIME_DIR` を指定しない場合、CMakeは次の場所から `dxcompiler.dll` / `dxil.dll` を探します。
+
+```text
+- VARJOXR_DXC_RUNTIME_DIR
+- D3D12HELPER_DXC_RUNTIME_DIR
+- D3D12Helperが検出済みのDXC runtime directory
+- repo/packages/Microsoft.Direct3D.DXC*/...
+- build/packages/Microsoft.Direct3D.DXC*/...
+- %USERPROFILE%/.nuget/packages/microsoft.direct3d.dxc/...
+- Windows SDK bin directory
+```
 
 ## 最小使用例: D3D11
 
@@ -358,6 +375,12 @@ cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane
 cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_04_ShaderPlane_D3D12
 cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_05_MultiplePlanes_D3D12
 cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_06_ProcessingPlane_D3D12
+```
+
+When CMake cannot find `dxcompiler.dll` automatically, add:
+
+```bat
+-DVARJOXR_DXC_RUNTIME_DIR="C:\path\to\directory\containing\dxcompiler.dll"
 ```
 
 ## Tests
