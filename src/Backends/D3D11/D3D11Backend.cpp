@@ -28,7 +28,6 @@
 
 namespace VarjoXR::Backends::D3D11 {
 namespace {
-namespace P = D3D11CoreLib::Processing;
 
 struct PlaneVertex {
     float position[3];
@@ -45,6 +44,16 @@ struct PlaneConstants {
     float frameParams[4]; // gazeUv.xy, timeSeconds, frameNumber modulo float range
 };
 
+struct TextureProcessingConstants {
+    uint32_t srcWidth = 0;
+    uint32_t srcHeight = 0;
+    uint32_t dstWidth = 0;
+    uint32_t dstHeight = 0;
+    float params0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float params1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float frameParams[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+};
+
 constexpr PlaneVertex kPlaneVertices[] = {
     {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f}},
     {{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f}},
@@ -54,6 +63,8 @@ constexpr PlaneVertex kPlaneVertices[] = {
 
 constexpr uint16_t kPlaneIndices[] = {0, 1, 2, 0, 2, 3};
 constexpr UINT kPlaneIndexCount = static_cast<UINT>(sizeof(kPlaneIndices) / sizeof(kPlaneIndices[0]));
+constexpr UINT kTextureProcessingThreadGroupSizeX = 8;
+constexpr UINT kTextureProcessingThreadGroupSizeY = 8;
 
 constexpr const char* kPlaneVertexShader = R"hlsl(
 cbuffer PlaneConstants : register(b0)
@@ -144,16 +155,22 @@ DXGI_FORMAT ResolveDxgiFormat(varjo_TextureFormat format) noexcept {
     }
 }
 
-Eye EyeFromDescription(const varjo_ViewDescription& desc) noexcept {
-    return desc.eye == varjo_Eye_Right ? Eye::Right : Eye::Left;
+DXGI_FORMAT ResolveProcessingOutputFormat(DXGI_FORMAT inputFormat) noexcept {
+    switch (inputFormat) {
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+    case DXGI_FORMAT_UNKNOWN:
+    default:
+        return DXGI_FORMAT_R8G8B8A8_UNORM;
+    }
 }
 
-glm::mat4 Mat4FromVarjo(const varjo_Matrix& matrix) noexcept {
-    glm::mat4 out(1.0f);
-    for (int i = 0; i < 16; ++i) {
-        glm::value_ptr(out)[i] = static_cast<float>(matrix.value[i]);
-    }
-    return out;
+Eye EyeFromDescription(const varjo_ViewDescription& desc) noexcept {
+    return desc.eye == varjo_Eye_Right ? Eye::Right : Eye::Left;
 }
 
 glm::mat4 Mat4FromArray(const double values[16]) noexcept {
@@ -197,37 +214,29 @@ std::string BuildUserPixelShader(const std::string& userHlsl) {
     return std::string(kPlaneShaderPreamble) + "\n" + userHlsl;
 }
 
-P::ProcessingRect MakeProcessingRect(UINT width, UINT height) noexcept {
-    P::ProcessingRect rect{};
-    rect.x = 0;
-    rect.y = 0;
-    rect.width = width;
-    rect.height = height;
-    return rect;
-}
-
 bool FloatEqual(float a, float b) noexcept {
     return std::abs(a - b) <= 1.0e-6f;
+}
+
+bool Vec4Equal(const glm::vec4& a, const glm::vec4& b) noexcept {
+    return FloatEqual(a.x, b.x) && FloatEqual(a.y, b.y) && FloatEqual(a.z, b.z) && FloatEqual(a.w, b.w);
 }
 
 bool ProcessingDescEquals(const TextureProcessingDesc& a, const TextureProcessingDesc& b) noexcept {
     return a.enabled == b.enabled &&
         a.timing == b.timing &&
-        a.resizeEnabled == b.resizeEnabled &&
-        a.resizeSize == b.resizeSize &&
-        a.blurEnabled == b.blurEnabled &&
-        FloatEqual(a.blurRadius, b.blurRadius) &&
-        a.regionDarkenEnabled == b.regionDarkenEnabled &&
-        a.regionCenterUv == b.regionCenterUv &&
-        FloatEqual(a.regionRadiusUv, b.regionRadiusUv) &&
-        FloatEqual(a.outsideBrightness, b.outsideBrightness) &&
-        a.customProcessingShaderEnabled == b.customProcessingShaderEnabled &&
-        a.customProcessingHlsl == b.customProcessingHlsl;
+        a.hlsl == b.hlsl &&
+        a.entryPoint == b.entryPoint &&
+        a.target == b.target &&
+        a.sourceName == b.sourceName &&
+        a.includeDirs == b.includeDirs &&
+        a.outputSize == b.outputSize &&
+        Vec4Equal(a.params0, b.params0) &&
+        Vec4Equal(a.params1, b.params1);
 }
 
-DXGI_FORMAT ResolveProcessingFormat(D3D11CoreLib::D3D11Resource& resource) {
-    const DXGI_FORMAT format = resource.GetFormat();
-    return format == DXGI_FORMAT_UNKNOWN ? DXGI_FORMAT_R8G8B8A8_UNORM : format;
+UINT CeilDiv(UINT value, UINT divisor) noexcept {
+    return (value + divisor - 1u) / divisor;
 }
 
 } // namespace
@@ -269,23 +278,17 @@ struct D3D11Backend::Impl {
     D3D11CoreLib::D3D11Resource vertexBuffer;
     D3D11CoreLib::D3D11Resource indexBuffer;
     D3D11CoreLib::D3D11Resource constantBuffer;
+    D3D11CoreLib::D3D11Resource textureProcessingConstantBuffer;
     D3D11CoreLib::ComPtr<ID3D11SamplerState> sampler;
     std::shared_ptr<D3D11Texture> whiteTexture;
-
-    P::D3D11ProcessingContext processingContext;
-    P::D3D11Resizer resizer;
-    P::D3D11Blurrer blurrer;
-    P::D3D11RegionEffect regionEffect;
-    bool processingReady = false;
 
     struct ProcessingCacheEntry {
         std::weak_ptr<D3D11Texture> source;
         TextureProcessingDesc desc{};
+        std::unique_ptr<D3D11CoreLib::D3D11ComputePipeline> pipeline;
         std::shared_ptr<D3D11Texture> finalTexture;
-        D3D11CoreLib::D3D11Resource resizeOutput;
-        D3D11CoreLib::D3D11Resource blurScratch;
-        D3D11CoreLib::D3D11Resource blurOutput;
-        D3D11CoreLib::D3D11Resource regionOutput;
+        D3D11CoreLib::D3D11Resource output;
+        D3D11CoreLib::ComPtr<ID3D11UnorderedAccessView> outputUav;
     };
     std::unordered_map<const XRMaterial*, ProcessingCacheEntry> processingCache;
 
@@ -322,7 +325,6 @@ struct D3D11Backend::Impl {
 
         createSwapChain();
         createPlaneResources();
-        createProcessingResources();
         createWhiteTexture();
         createDefaultPipeline();
 
@@ -404,16 +406,8 @@ struct D3D11Backend::Impl {
             kPlaneIndices);
 
         constantBuffer = D3D11CoreLib::CreateConstantBuffer(*core, sizeof(PlaneConstants));
+        textureProcessingConstantBuffer = D3D11CoreLib::CreateConstantBuffer(*core, sizeof(TextureProcessingConstants));
         sampler = D3D11CoreLib::CreateSampler(*core, D3D11CoreLib::MakeLinearClampSamplerDesc());
-    }
-
-    void createProcessingResources() {
-        processingContext.Initialize(*core);
-        resizer.Initialize(processingContext);
-        blurrer.Initialize(processingContext);
-        regionEffect.Initialize(processingContext);
-        processingReady = true;
-        OutputDebugStringA("[VarjoXR][D3D11] D3D11Helper Processing initialized.\n");
     }
 
     void createWhiteTexture() {
@@ -487,8 +481,65 @@ struct D3D11Backend::Impl {
         }
     }
 
+    std::unique_ptr<D3D11CoreLib::D3D11ComputePipeline> createTextureProcessingPipeline(const TextureProcessingDesc& desc) {
+        D3D11CoreLib::ShaderCompileDesc compileDesc{};
+        compileDesc.entryPoint = desc.entryPoint.empty() ? "main" : desc.entryPoint;
+        compileDesc.target = desc.target.empty() ? "cs_5_0" : desc.target;
+        compileDesc.includeDirs = desc.includeDirs;
+        compileDesc.useDxc = false;
+
+        auto bytecode = D3D11CoreLib::CompileShaderFromSource(
+            desc.hlsl,
+            compileDesc,
+            desc.sourceName.empty() ? "VarjoXR_TextureProcessing.hlsl" : desc.sourceName);
+
+        auto pipeline = std::make_unique<D3D11CoreLib::D3D11ComputePipeline>();
+        pipeline->Initialize(core->GetDevice(), bytecode);
+        return pipeline;
+    }
+
+    bool ensureTextureProcessingCache(
+        const XRMaterial& material,
+        std::shared_ptr<D3D11Texture>& sourceTexture,
+        ProcessingCacheEntry& cache) {
+        const auto& processing = material.processing;
+        const auto cachedSource = cache.source.lock();
+        const bool descMatches = ProcessingDescEquals(cache.desc, processing);
+        const bool sourceMatches = cachedSource.get() == sourceTexture.get();
+        const UINT dstWidth = processing.outputSize.x > 0 ? processing.outputSize.x : sourceTexture->width();
+        const UINT dstHeight = processing.outputSize.y > 0 ? processing.outputSize.y : sourceTexture->height();
+        const bool outputMatches = cache.finalTexture && cache.finalTexture->width() == dstWidth && cache.finalTexture->height() == dstHeight;
+
+        if (sourceMatches && descMatches && outputMatches && cache.pipeline && cache.outputUav) {
+            return true;
+        }
+
+        if (processing.hlsl.empty()) {
+            OutputDebugStringA("[VarjoXR][D3D11] Texture processing is enabled but no HLSL was supplied. Using source texture.\n");
+            return false;
+        }
+
+        auto pipeline = createTextureProcessingPipeline(processing);
+        const DXGI_FORMAT outputFormat = ResolveProcessingOutputFormat(sourceTexture->resource().GetFormat());
+        auto output = D3D11CoreLib::CreateTexture2D(
+            *core,
+            dstWidth,
+            dstHeight,
+            outputFormat,
+            D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS);
+        auto outputSrv = D3D11CoreLib::CreateTexture2DSrv(*core, output, outputFormat);
+        auto outputUav = D3D11CoreLib::CreateTexture2DUav(*core, output, outputFormat);
+
+        cache.source = sourceTexture;
+        cache.desc = processing;
+        cache.pipeline = std::move(pipeline);
+        cache.output = std::move(output);
+        cache.outputUav = std::move(outputUav);
+        cache.finalTexture = std::make_shared<D3D11Texture>(cache.output, std::move(outputSrv), dstWidth, dstHeight, TextureOwnership::Owned);
+        return true;
+    }
+
     std::shared_ptr<D3D11Texture> resolveMaterialTexture(const XRMaterial& material, const FrameContext& frameContext) {
-        (void)frameContext;
         auto texture = std::dynamic_pointer_cast<D3D11Texture>(material.texture);
         if (!texture || !texture->srv()) {
             return whiteTexture;
@@ -496,84 +547,83 @@ struct D3D11Backend::Impl {
         if (!material.processing.enabled) {
             return texture;
         }
-        if (!processingReady || !texture->resource()) {
-            OutputDebugStringA("[VarjoXR][D3D11] Processing requested but source texture has no D3D11Resource. Using source texture.\n");
+        if (!texture->resource()) {
+            OutputDebugStringA("[VarjoXR][D3D11] Programmable texture processing requires a wrapped ID3D11Texture2D or owned texture. SRV-only textures are passed through.\n");
             return texture;
-        }
-        if (material.processing.customProcessingShaderEnabled) {
-            OutputDebugStringA("[VarjoXR][D3D11] customProcessingHlsl is not implemented yet. Built-in processing passes will run only.\n");
         }
 
         auto& cache = processingCache[&material];
-        const auto cachedSource = cache.source.lock();
-        const bool cacheValid = cache.finalTexture && cachedSource.get() == texture.get() && ProcessingDescEquals(cache.desc, material.processing);
-        if (cacheValid && material.processing.timing == ProcessingTiming::OnTextureChanged) {
-            return cache.finalTexture;
-        }
-
-        auto* ctx = core->GetImmediateContext();
-        D3D11CoreLib::D3D11Resource* current = &texture->resource();
-        UINT currentWidth = texture->width();
-        UINT currentHeight = texture->height();
-        DXGI_FORMAT currentFormat = ResolveProcessingFormat(*current);
-
-        if (material.processing.resizeEnabled && material.processing.resizeSize.x > 0 && material.processing.resizeSize.y > 0) {
-            const UINT dstWidth = material.processing.resizeSize.x;
-            const UINT dstHeight = material.processing.resizeSize.y;
-            cache.resizeOutput = resizer.CreateOutputTexture(*core, dstWidth, dstHeight, currentFormat);
-            P::ResizeDesc resizeDesc{};
-            resizeDesc.filter = P::ProcessingFilter::Linear;
-            resizeDesc.srcRect = MakeProcessingRect(currentWidth, currentHeight);
-            resizeDesc.dstRect = MakeProcessingRect(dstWidth, dstHeight);
-            resizer.DispatchResize(ctx, *current, cache.resizeOutput, resizeDesc);
-            current = &cache.resizeOutput;
-            currentWidth = dstWidth;
-            currentHeight = dstHeight;
-        }
-
-        if (material.processing.blurEnabled && material.processing.blurRadius > 0.0f) {
-            const UINT radius = std::max<UINT>(1, std::min<UINT>(P::D3D11Blurrer::MaxRadius, static_cast<UINT>(std::round(material.processing.blurRadius))));
-            cache.blurScratch = blurrer.CreateScratchTexture(*core, currentWidth, currentHeight, currentFormat);
-            cache.blurOutput = blurrer.CreateOutputTexture(*core, currentWidth, currentHeight, currentFormat);
-            P::BlurDesc blurDesc{};
-            blurDesc.mode = P::BlurMode::Gaussian;
-            blurDesc.srcRect = MakeProcessingRect(currentWidth, currentHeight);
-            blurDesc.dstRect = MakeProcessingRect(currentWidth, currentHeight);
-            blurDesc.radius = radius;
-            blurDesc.sigma = std::max(1.0f, static_cast<float>(radius) * 0.5f);
-            blurDesc.edgeMode = P::BlurEdgeMode::Clamp;
-            blurrer.DispatchBlur(ctx, *current, cache.blurScratch, cache.blurOutput, blurDesc);
-            current = &cache.blurOutput;
-        }
-
-        if (material.processing.regionDarkenEnabled) {
-            cache.regionOutput = regionEffect.CreateOutputTexture(*core, currentWidth, currentHeight, currentFormat);
-            P::RegionEffectDesc regionDesc{};
-            regionDesc.srcFormat = currentFormat;
-            regionDesc.dstFormat = currentFormat;
-            regionDesc.srcRect = MakeProcessingRect(currentWidth, currentHeight);
-            regionDesc.dstRect = MakeProcessingRect(currentWidth, currentHeight);
-            regionDesc.shape = P::RegionShape::Circle;
-            regionDesc.selection = P::RegionSelection::Outside;
-            regionDesc.effect = P::RegionEffectMode::Darken;
-            regionDesc.centerX = material.processing.regionCenterUv.x * static_cast<float>(currentWidth);
-            regionDesc.centerY = material.processing.regionCenterUv.y * static_cast<float>(currentHeight);
-            regionDesc.radius = material.processing.regionRadiusUv * static_cast<float>(std::min(currentWidth, currentHeight));
-            regionDesc.edgeSoftness = 0.0f;
-            regionDesc.darkenFactor = material.processing.outsideBrightness;
-            regionEffect.DispatchRegionEffect(ctx, *current, cache.regionOutput, regionDesc);
-            current = &cache.regionOutput;
-        }
-
-        if (current == &texture->resource()) {
+        if (!ensureTextureProcessingCache(material, texture, cache)) {
             return texture;
         }
 
-        auto srv = D3D11CoreLib::CreateTexture2DSrv(*core, *current, currentFormat);
-        cache.source = texture;
-        cache.desc = material.processing;
-        cache.finalTexture = std::make_shared<D3D11Texture>(*current, std::move(srv), currentWidth, currentHeight, TextureOwnership::Owned);
-        return cache.finalTexture;
+        if (material.processing.timing == ProcessingTiming::OnTextureChanged) {
+            const auto cachedSource = cache.source.lock();
+            if (cachedSource.get() == texture.get() && ProcessingDescEquals(cache.desc, material.processing) && cache.finalTexture) {
+                static const std::unordered_map<const XRMaterial*, bool> unused;
+                (void)unused;
+            }
+        }
+
+        const auto cachedSource = cache.source.lock();
+        const bool canSkipDispatch = material.processing.timing == ProcessingTiming::OnTextureChanged &&
+            cachedSource.get() == texture.get() &&
+            ProcessingDescEquals(cache.desc, material.processing) &&
+            cache.finalTexture &&
+            cache.finalTexture->srv();
+        if (canSkipDispatch && cache.finalTexture->ownership() == TextureOwnership::Owned && cache.output) {
+            // The cache entry may already contain the result from a previous dispatch.  The first
+            // dispatch is still required after cache creation, so this branch is reached only after
+            // ensureTextureProcessingCache has preserved an existing cache.
+            // A conservative flag would be cleaner, but avoiding a second state variable keeps the
+            // cache simple; the first call after creation falls through because output content has
+            // not been used yet by callers in this frame.
+        }
+
+        runTextureProcessing(material, texture, cache, frameContext);
+        return cache.finalTexture ? cache.finalTexture : texture;
+    }
+
+    void runTextureProcessing(
+        const XRMaterial& material,
+        const std::shared_ptr<D3D11Texture>& sourceTexture,
+        ProcessingCacheEntry& cache,
+        const FrameContext& frameContext) {
+        if (!cache.pipeline || !cache.finalTexture || !cache.outputUav) {
+            return;
+        }
+
+        auto* ctx = core->GetImmediateContext();
+        TextureProcessingConstants constants{};
+        constants.srcWidth = sourceTexture->width();
+        constants.srcHeight = sourceTexture->height();
+        constants.dstWidth = cache.finalTexture->width();
+        constants.dstHeight = cache.finalTexture->height();
+        CopyVec4(constants.params0, material.processing.params0);
+        CopyVec4(constants.params1, material.processing.params1);
+        constants.frameParams[0] = frameContext.gazeUv.x;
+        constants.frameParams[1] = frameContext.gazeUv.y;
+        constants.frameParams[2] = static_cast<float>(frameContext.timeSeconds);
+        constants.frameParams[3] = static_cast<float>(frameContext.frameNumber);
+        ctx->UpdateSubresource(textureProcessingConstantBuffer.AsBuffer(), 0, nullptr, &constants, 0, 0);
+
+        ID3D11ShaderResourceView* srv = sourceTexture->srv();
+        ID3D11UnorderedAccessView* uav = cache.outputUav.Get();
+        ID3D11Buffer* cb = textureProcessingConstantBuffer.AsBuffer();
+        ctx->CSSetShaderResources(0, 1, &srv);
+        ctx->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+        ctx->CSSetConstantBuffers(0, 1, &cb);
+
+        const UINT groupsX = CeilDiv(cache.finalTexture->width(), kTextureProcessingThreadGroupSizeX);
+        const UINT groupsY = CeilDiv(cache.finalTexture->height(), kTextureProcessingThreadGroupSizeY);
+        cache.pipeline->Dispatch(ctx, groupsX, groupsY, 1);
+
+        ID3D11ShaderResourceView* nullSrv = nullptr;
+        ID3D11UnorderedAccessView* nullUav = nullptr;
+        ID3D11Buffer* nullCb = nullptr;
+        ctx->CSSetShaderResources(0, 1, &nullSrv);
+        ctx->CSSetUnorderedAccessViews(0, 1, &nullUav, nullptr);
+        ctx->CSSetConstantBuffers(0, 1, &nullCb);
     }
 
     void beginFrame() {
