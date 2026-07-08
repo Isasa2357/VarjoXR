@@ -30,6 +30,21 @@ varjoxr_copy_dxc_runtime(VarjoXRBackendSmokeTests)
 
 add_test(NAME VarjoXRBackendSmokeTests COMMAND VarjoXRBackendSmokeTests)
 
+add_executable(VarjoXRShaderLinkageTests
+    VarjoXRShaderLinkageTests.cpp)
+
+target_link_libraries(VarjoXRShaderLinkageTests PRIVATE VarjoXR::VarjoXR)
+
+target_compile_features(VarjoXRShaderLinkageTests PRIVATE cxx_std_17)
+
+if(MSVC AND VARJOXR_ENABLE_WARNINGS)
+    target_compile_options(VarjoXRShaderLinkageTests PRIVATE /utf-8 /W4 /permissive-)
+endif()
+
+varjoxr_copy_dxc_runtime(VarjoXRShaderLinkageTests)
+
+add_test(NAME VarjoXRShaderLinkageTests COMMAND VarjoXRShaderLinkageTests)
+
 function(varjoxr_add_target_build_smoke_test target)
     if(TARGET ${target})
         add_test(
