@@ -1,55 +1,83 @@
 #pragma once
 
-#include <VarjoXR/Detail/IRenderBackend.hpp>
+#include <cstdint>
+#include <memory>
+#include <vector>
 
 #include <D3D11Helper/D3D11Core/D3D11Core.hpp>
-#include <D3D11Helper/D3D11Framework/D3D11Framework.hpp>
+#include <D3D11Helper/D3D11Gpu/D3D11Gpu.hpp>
+#include <D3D11Helper/D3D11Processing/D3D11Processing.hpp>
 
-#include <utility>
+#include <VarjoXR/Backends/IRenderBackend.hpp>
+#include <VarjoXR/Core/XRTexture.hpp>
+
+struct ID3D11ShaderResourceView;
+struct ID3D11Texture2D;
+
+typedef enum DXGI_FORMAT DXGI_FORMAT;
 
 namespace VarjoXR::Backends::D3D11 {
+
+struct D3D11BackendDesc {
+    int32_t swapchainTextureCount = 3;
+    int64_t varjoTextureFormat = 0;
+    bool enableAlphaBlend = true;
+};
 
 class D3D11Texture final : public XRTexture {
 public:
     D3D11Texture(D3D11CoreLib::D3D11Resource resource,
                  D3D11CoreLib::ComPtr<ID3D11ShaderResourceView> srv,
                  uint32_t width,
-                 uint32_t height)
-        : XRTexture(BackendType::D3D11, width, height), resource(std::move(resource)), srv(std::move(srv)) {}
+                 uint32_t height,
+                 TextureOwnership ownership);
 
     D3D11Texture(D3D11CoreLib::ComPtr<ID3D11ShaderResourceView> srv,
                  uint32_t width,
-                 uint32_t height)
-        : XRTexture(BackendType::D3D11, width, height), srv(std::move(srv)) {}
+                 uint32_t height);
 
-    D3D11CoreLib::D3D11Resource resource;
-    D3D11CoreLib::ComPtr<ID3D11ShaderResourceView> srv;
+    D3D11CoreLib::D3D11Resource& resource() noexcept { return resource_; }
+    const D3D11CoreLib::D3D11Resource& resource() const noexcept { return resource_; }
+    ID3D11ShaderResourceView* srv() const noexcept { return srv_.Get(); }
+
+private:
+    D3D11CoreLib::D3D11Resource resource_;
+    D3D11CoreLib::ComPtr<ID3D11ShaderResourceView> srv_;
 };
 
 class D3D11Backend final : public IRenderBackend {
 public:
-    D3D11Backend();
+    D3D11Backend(std::shared_ptr<D3D11CoreLib::D3D11Core> core, D3D11BackendDesc desc = {});
     ~D3D11Backend() override;
 
-    BackendType type() const noexcept override { return BackendType::D3D11; }
-    void initialize(VarjoSession& session, const XRSpaceConfig& config) override;
-    void renderFrame(VarjoSession& session, const std::vector<std::unique_ptr<XRObject>>& objects) override;
-    std::shared_ptr<XRTexture> createTextureFromRGBA(
+    BackendType backendType() const noexcept override { return BackendType::D3D11; }
+    void initialize(std::shared_ptr<::VarjoSession> session) override;
+    void beginFrame() override;
+    void render(const std::vector<std::unique_ptr<XRPlane>>& planes, const FrameContext& frameContext) override;
+    void endFrame() override;
+
+    std::shared_ptr<D3D11Texture> createTextureFromRGBA(
         const uint8_t* rgba,
         uint32_t width,
         uint32_t height,
-        uint32_t rowPitchBytes) override;
-    std::shared_ptr<XRTexture> createTextureFromD3D11Resource(
+        uint32_t rowPitchBytes = 0);
+
+    std::shared_ptr<D3D11Texture> wrapTexture(
         ID3D11Texture2D* texture,
-        DXGI_FORMAT srvFormat) override;
-    std::shared_ptr<XRTexture> createTextureFromD3D11Srv(
+        DXGI_FORMAT srvFormat);
+
+    std::shared_ptr<D3D11Texture> wrapSrv(
         ID3D11ShaderResourceView* srv,
         uint32_t width,
-        uint32_t height) override;
+        uint32_t height);
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    std::unique_ptr<Impl> impl_;
 };
+
+std::unique_ptr<IRenderBackend> CreateBackend(
+    std::shared_ptr<D3D11CoreLib::D3D11Core> core,
+    D3D11BackendDesc desc = {});
 
 } // namespace VarjoXR::Backends::D3D11
