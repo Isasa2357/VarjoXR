@@ -5,6 +5,7 @@
 
 #include "ProgrammableProcessingSampleCommon.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -38,8 +39,6 @@ int main() {
         plane.setTexture(texture);
 
         ProgrammableProcessingSample::CircleDarkenConstants constants{};
-        constants.centerX = 0.5f;
-        constants.centerY = 0.5f;
         constants.radius = 0.28f;
         constants.outsideBrightness = 0.45f;
         constants.edgeSoftness = 0.035f;
@@ -49,12 +48,17 @@ int main() {
             ProgrammableProcessingSample::ShaderDirectory(),
             constants,
             {kWidth, kHeight});
-        plane.setProcessing(processing);
-
         plane.setTint({1.0f, 1.0f, 1.0f, 1.0f});
 
         while (true) {
-            space.frameContext().timeSeconds = ProgrammableProcessingSample::SecondsSinceStart();
+            const double t = ProgrammableProcessingSample::SecondsSinceStart();
+            constants.centerX = 0.5f + 0.15f * static_cast<float>(std::sin(t * 0.9));
+            constants.centerY = 0.5f + 0.10f * static_cast<float>(std::sin(t * 1.3));
+            constants.outsideBrightness = 0.35f + 0.15f * static_cast<float>(0.5 + 0.5 * std::sin(t * 0.7));
+            processing.userConstants.set(constants);
+            plane.setProcessing(processing);
+
+            space.frameContext().timeSeconds = t;
             space.update();
         }
     } catch (const std::exception& e) {
