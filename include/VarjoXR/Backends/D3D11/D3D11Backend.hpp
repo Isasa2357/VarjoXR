@@ -21,7 +21,13 @@ namespace VarjoXR::Backends::D3D11 {
 struct D3D11BackendDesc {
     int32_t swapchainTextureCount = 3;
     int64_t varjoTextureFormat = 0;
+
+    // Direct3D alpha blending used while drawing Plane pixels into the swapchain.
     bool enableAlphaBlend = true;
+
+    // Varjo compositor layer alpha blending. Keep this enabled for MR overlays;
+    // otherwise the transparent clear color can become an opaque black layer.
+    bool enableLayerAlphaBlend = true;
 };
 
 class D3D11Texture final : public XRTexture {
