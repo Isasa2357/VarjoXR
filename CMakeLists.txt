@@ -22,6 +22,7 @@ endif()
 include(cmake/VarjoXRDependencies.cmake)
 varjoxr_resolve_dependencies()
 include(cmake/VarjoXRDxcRuntime.cmake)
+include(cmake/VarjoXRVarjoRuntime.cmake)
 
 set(VARJOXR_PUBLIC_HEADERS
     include/VarjoXR/VarjoXR.hpp
