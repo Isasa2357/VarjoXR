@@ -25,6 +25,10 @@ struct D3D12BackendDesc {
     bool enableAlphaBlend = true;
     uint32_t cbvSrvUavDescriptorCount = 2048;
     uint32_t rtvDescriptorCount = 256;
+
+    // Number of CPU/GPU frame slots used for command allocators and upload buffers.
+    // Must be at least 2 for non-blocking D3D12 submission; values below 2 are clamped.
+    uint32_t frameResourceCount = 3;
 };
 
 class D3D12Texture final : public XRTexture {
