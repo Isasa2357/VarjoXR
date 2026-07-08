@@ -18,16 +18,16 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 - D3D11 `ID3D11Texture2D` / `ID3D11ShaderResourceView` wrapper
 - D3D12 `ID3D12Resource` wrapper
 - programmable texture processing prepass
-- D3D12 executable outputへの `dxcompiler.dll` / `dxil.dll` 自動コピー
-- Varjo Runtimeなしで実行可能な core unit tests
+- D3D11 / D3D12 executable output への `dxcompiler.dll` / `dxil.dll` 自動コピー
+- Varjo Runtime なしで実行可能な core unit tests
 - backend compile/smoke tests
-- RenderingPlane samples: 01〜06
+- RenderingPlane samples: 01〜08
 
 ## 依存関係
 
 - Windows 10 / 11
-- Visual Studio 2022
-- CMake
+- Visual Studio 18 2026
+- CMake 4.2 以降
 - C++17
 - Varjo Native SDK
 - VarjoToolkit
@@ -39,7 +39,7 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 使用しないもの:
 
 - Varjo SDK `examples/Common/`
-- Varjo sample内の `Session`, `MultiLayerView`, `D3D11Renderer`, `Scene`
+- Varjo sample 内の `Session`, `MultiLayerView`, `D3D11Renderer`, `Scene`
 
 ## ビルドオプション
 
@@ -47,26 +47,30 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 |---|---:|---|
 | `VARJOXR_BUILD_RUNTIME` | `ON` | Varjo Native SDK / backend を含む `VarjoXR` target をビルドする |
 | `VARJOXR_BUILD_SAMPLES` | `ON` | samples をビルドする |
-| `VARJOXR_BUILD_TESTS` | `ON` | CTest用のcore testsをビルドする |
-| `VARJOXR_ENABLE_D3D11` | `ON` | D3D11 backendをビルドする |
-| `VARJOXR_ENABLE_D3D12` | `ON` | D3D12 backendをビルドする |
-| `VARJOXR_COPY_DXC_RUNTIME` | `ON` | D3D12 executableの出力先へ `dxcompiler.dll` / `dxil.dll` をコピーする |
+| `VARJOXR_BUILD_TESTS` | `ON` | CTest 用の core tests をビルドする |
+| `VARJOXR_ENABLE_D3D11` | `ON` | D3D11 backend をビルドする |
+| `VARJOXR_ENABLE_D3D12` | `ON` | D3D12 backend をビルドする |
+| `VARJOXR_COPY_DXC_RUNTIME` | `ON` | `dxcompiler.dll` / `dxil.dll` を helper 使用 executable の出力先へコピーする |
 | `VARJOXR_DXC_RUNTIME_DIR` | empty | `dxcompiler.dll` / `dxil.dll` があるディレクトリ。自動検出できない場合に指定する |
-| `D3D12HELPER_DXC_RUNTIME_DIR` | empty | D3D12Helper側のDXC runtime探索にも使える互換指定 |
-| `VARJOXR_VARJO_INCLUDE_DIR` | empty | `Varjo.h` などがあるinclude directory |
+| `D3D12HELPER_DXC_RUNTIME_DIR` | empty | D3D12Helper 側の DXC runtime 探索にも使える互換指定 |
+| `VARJOXR_VARJO_INCLUDE_DIR` | empty | `Varjo.h` などがある include directory |
 | `VARJOXR_VARJO_LIBRARY` | empty | `VarjoLib.lib` のパス |
+| `VARJOXR_VARJO_RUNTIME_DIR` | empty | `VarjoLib.dll` などがある runtime directory |
 
-`VARJOXR_DXC_RUNTIME_DIR` を指定しない場合、CMakeは次の場所から `dxcompiler.dll` / `dxil.dll` を探します。
+`VARJOXR_DXC_RUNTIME_DIR` を指定しない場合、CMake は次の場所から `dxcompiler.dll` / `dxil.dll` を探します。
 
 ```text
 - VARJOXR_DXC_RUNTIME_DIR
 - D3D12HELPER_DXC_RUNTIME_DIR
-- D3D12Helperが検出済みのDXC runtime directory
+- D3D12Helper が検出済みの DXC runtime directory
 - repo/packages/Microsoft.Direct3D.DXC*/...
 - build/packages/Microsoft.Direct3D.DXC*/...
 - %USERPROFILE%/.nuget/packages/microsoft.direct3d.dxc/...
 - Windows SDK bin directory
+- PATH
 ```
+
+D3D11Helper / D3D12Helper が DXC API をリンクしている場合、D3D11 単体 executable でも `dxcompiler.dll` がプロセス起動時に必要になることがあります。そのため D3D11 sample に対しても DXC runtime copy を行います。
 
 ## 最小使用例: D3D11
 
@@ -183,9 +187,9 @@ plane.setPlacementMode(VarjoXR::PlacementMode::HeadRelative);
 plane.transform().position = {0.0f, -0.05f, -0.9f};
 ```
 
-## 左右eye別Material
+## 左右 eye 別 Material
 
-同じPlane形状・同じTransformに対して、左右eye別にtexture / HLSL / processingを設定できます。
+同じ Plane 形状・同じ Transform に対して、左右 eye 別に texture / HLSL / processing を設定できます。
 
 ```cpp
 plane.setTexture(VarjoXR::Eye::Left, leftTexture);
@@ -200,9 +204,9 @@ plane.setProcessing(VarjoXR::Eye::Right, rightProcessing);
 
 ## Final pixel shader
 
-`setPixelShaderHLSL()` は、PlaneをVarjo swapchainへ描画する最後のpixel shaderを差し替える advanced API です。
+`setPixelShaderHLSL()` は、Plane を Varjo swapchain へ描画する最後の pixel shader を差し替える advanced API です。
 
-渡すHLSLには `main(float2 uv : TEXCOORD0) : SV_TARGET` だけを書きます。次の宣言はVarjoXR側が前置します。
+渡す HLSL には `main(float2 uv : TEXCOORD0) : SV_TARGET` だけを書けます。D3D11 / D3D12 backend は必要に応じて VS/PS linkage 互換 wrapper を挿入します。次の宣言は VarjoXR 側が前置します。
 
 ```hlsl
 Texture2D xrTexture : register(t0);
@@ -233,7 +237,7 @@ float4 main(float2 uv : TEXCOORD0) : SV_TARGET
 
 ## Programmable texture processing
 
-画像処理は、final pixel shaderではなく `TextureProcessingDesc` による texture -> texture compute prepass として行います。
+画像処理は、final pixel shader ではなく `TextureProcessingDesc` による texture -> texture compute prepass として行います。
 
 ```text
 source texture
@@ -243,7 +247,7 @@ source texture
   -> Varjo swapchain
 ```
 
-binding規約:
+binding 規約:
 
 ```text
 t0: input texture SRV
@@ -252,7 +256,7 @@ b0: user-defined constant buffer bytes
 b1: VarjoXR frame/texture constants
 ```
 
-C++側:
+C++ 側:
 
 ```cpp
 struct MyConstants {
@@ -279,59 +283,29 @@ processing.frameConstants.registerIndex = 1;
 plane.setProcessing(processing);
 ```
 
-HLSL側:
-
-```hlsl
-Texture2D<float4> xrInput : register(t0);
-RWTexture2D<float4> xrOutput : register(u0);
-
-cbuffer MyConstants : register(b0)
-{
-    float centerX;
-    float centerY;
-    float radius;
-    float outsideBrightness;
-};
-
-cbuffer XRTextureProcessingFrameConstants : register(b1)
-{
-    uint srcWidth;
-    uint srcHeight;
-    uint dstWidth;
-    uint dstHeight;
-    float4 frameParams;
-};
-
-[numthreads(8, 8, 1)]
-void main(uint3 id : SV_DispatchThreadID)
-{
-    if (id.x >= dstWidth || id.y >= dstHeight) return;
-    float2 uv = (float2(id.xy) + 0.5f) / float2(dstWidth, dstHeight);
-    xrOutput[id.xy] = xrInput.Load(int3(uint2(uv * float2(srcWidth, srcHeight)), 0));
-}
-```
-
 `hlsl/VarjoXR/TextureProcessing.hlsli` には、`xrInput` / `xrOutput` / `XRTextureProcessingFrameConstants` と補助関数をまとめています。ユーザー定数 `b0` は任意構造体にするため、この `.hlsli` には含めていません。
 
 ## Samples
 
-`samples/RenderingPlane` は設計書に合わせて 01〜06 に分割されています。
+`samples/RenderingPlane` は設計書に合わせて 01〜08 に分割されています。
 
 | Target | 内容 |
 |---|---|
-| `RenderingPlane_01_SinglePlane_D3D11` / `D3D12` | World配置の単一Plane |
-| `RenderingPlane_02_HeadRelativePlane_D3D11` / `D3D12` | HeadRelative配置のPlane |
-| `RenderingPlane_03_StereoPlane_D3D11` / `D3D12` | 左右eye別texture |
-| `RenderingPlane_04_ShaderPlane_D3D11` / `D3D12` | final pixel shader差し替え |
-| `RenderingPlane_05_MultiplePlanes_D3D11` / `D3D12` | 複数Plane同時表示 |
+| `RenderingPlane_01_SinglePlane_D3D11` / `D3D12` | World 配置の単一 Plane |
+| `RenderingPlane_02_HeadRelativePlane_D3D11` / `D3D12` | HeadRelative 配置の Plane |
+| `RenderingPlane_03_StereoPlane_D3D11` / `D3D12` | 左右 eye 別 texture |
+| `RenderingPlane_04_ShaderPlane_D3D11` / `D3D12` | final pixel shader 差し替え |
+| `RenderingPlane_05_MultiplePlanes_D3D11` / `D3D12` | 複数 Plane 同時表示 |
 | `RenderingPlane_06_ProcessingPlane_D3D11` / `D3D12` | programmable texture processing |
+| `RenderingPlane_07_EyeMaterialVariants_D3D11` / `D3D12` | 左右 eye 別 texture / shader / processing |
+| `RenderingPlane_08_NativeTexturePlane_D3D11` / `D3D12` | 外部 native D3D texture/resource wrapper |
 
-追加のprocessing専用sample:
+追加の processing 専用 sample:
 
 | Target | 内容 |
 |---|---|
-| `ProgrammableProcessing_D3D11` | processing constantsを毎frame更新するD3D11 sample |
-| `ProgrammableProcessing_D3D12` | processing constantsを毎frame更新するD3D12 sample |
+| `ProgrammableProcessing_D3D11` | processing constants を毎 frame 更新する D3D11 sample |
+| `ProgrammableProcessing_D3D12` | processing constants を毎 frame 更新する D3D12 sample |
 
 ## Build examples
 
@@ -342,18 +316,16 @@ git fetch --prune origin
 git checkout rewrite/v0.1
 git pull --ff-only origin rewrite/v0.1
 
-cmake -S . -B out/build/rewrite-v01-d3d11 -G "Visual Studio 17 2022" -A x64 ^
+cmake -S . -B out/build/rewrite-v01-d3d11 -G "Visual Studio 18 2026" -A x64 ^
   -DVARJOXR_ENABLE_D3D11=ON ^
   -DVARJOXR_ENABLE_D3D12=OFF ^
   -DVARJOXR_BUILD_SAMPLES=ON ^
-  -DVARJOXR_BUILD_TESTS=ON
+  -DVARJOXR_BUILD_TESTS=ON ^
+  -DVARJOXR_DXC_RUNTIME_DIR="C:\path\to\directory\containing\dxcompiler.dll"
 
 cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_01_SinglePlane_D3D11
-cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_02_HeadRelativePlane_D3D11
-cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_03_StereoPlane_D3D11
-cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_04_ShaderPlane_D3D11
-cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_05_MultiplePlanes_D3D11
-cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_06_ProcessingPlane_D3D11
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_07_EyeMaterialVariants_D3D11
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_08_NativeTexturePlane_D3D11
 ```
 
 D3D12:
@@ -363,24 +335,16 @@ git fetch --prune origin
 git checkout rewrite/v0.1
 git pull --ff-only origin rewrite/v0.1
 
-cmake -S . -B out/build/rewrite-v01-d3d12 -G "Visual Studio 17 2022" -A x64 ^
+cmake -S . -B out/build/rewrite-v01-d3d12 -G "Visual Studio 18 2026" -A x64 ^
   -DVARJOXR_ENABLE_D3D11=OFF ^
   -DVARJOXR_ENABLE_D3D12=ON ^
   -DVARJOXR_BUILD_SAMPLES=ON ^
-  -DVARJOXR_BUILD_TESTS=ON
+  -DVARJOXR_BUILD_TESTS=ON ^
+  -DVARJOXR_DXC_RUNTIME_DIR="C:\path\to\directory\containing\dxcompiler.dll"
 
 cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_01_SinglePlane_D3D12
-cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_02_HeadRelativePlane_D3D12
-cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_03_StereoPlane_D3D12
-cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_04_ShaderPlane_D3D12
-cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_05_MultiplePlanes_D3D12
-cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_06_ProcessingPlane_D3D12
-```
-
-When CMake cannot find `dxcompiler.dll` automatically, add:
-
-```bat
--DVARJOXR_DXC_RUNTIME_DIR="C:\path\to\directory\containing\dxcompiler.dll"
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_07_EyeMaterialVariants_D3D12
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_08_NativeTexturePlane_D3D12
 ```
 
 ## Tests
@@ -390,22 +354,11 @@ Core tests and backend compile/smoke tests can run without HMD. `VarjoXRBackendS
 When `VARJOXR_BUILD_SAMPLES=ON`, CTest also registers `Build_<target>` tests for the RenderingPlane and ProgrammableProcessing sample targets. These tests invoke `cmake --build` for each sample target and are marked `RUN_SERIAL` to avoid concurrent builds in the same build directory.
 
 ```bat
-git fetch --prune origin
-git checkout rewrite/v0.1
-git pull --ff-only origin rewrite/v0.1
-
 cmake --build out/build/rewrite-v01-d3d11 --config Debug
 ctest --test-dir out/build/rewrite-v01-d3d11 -C Debug --output-on-failure
 ```
 
-To run only backend smoke tests:
-
-```bat
-ctest --test-dir out/build/rewrite-v01-d3d11 -C Debug -R "VarjoXRBackendSmokeTests|Build_RenderingPlane" --output-on-failure
-ctest --test-dir out/build/rewrite-v01-d3d12 -C Debug -R "VarjoXRBackendSmokeTests|Build_RenderingPlane" --output-on-failure
-```
-
-HMD / Varjo Runtime / actual presentation integration tests are still not automated. Runtime behavior is currently verified through samples on a machine with Varjo Runtime and HMD.
+HMD / Varjo Runtime / actual presentation integration tests are still not automated. Runtime behavior is verified through samples on a machine with Varjo Runtime and HMD.
 
 ## 設計上まだ未実装のもの
 
