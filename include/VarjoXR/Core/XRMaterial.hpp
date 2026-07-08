@@ -16,7 +16,12 @@
 namespace VarjoXR {
 
 enum class ProcessingTiming {
+    // Dispatch once for each distinct XRTexture object assigned to the material.
+    // This mode is useful for static source textures.
     OnTextureChanged,
+
+    // Dispatch every frame. This is the default because camera/video textures and
+    // user constants are usually updated every frame.
     BeforeRenderEachFrame,
 };
 
@@ -62,9 +67,14 @@ struct TextureProcessingFrameConstantsDesc {
 // Default thread group contract:
 //   numthreads(8, 8, 1)
 //   entryPoint defaults to "main".
+//
+// Cache policy:
+//   HLSL, entry point, target, includeDirs, output size, and constant-buffer
+//   layouts define the processing pipeline cache. The source texture object and
+//   userConstants.data are runtime state and may change every frame.
 struct TextureProcessingDesc {
     bool enabled = false;
-    ProcessingTiming timing = ProcessingTiming::OnTextureChanged;
+    ProcessingTiming timing = ProcessingTiming::BeforeRenderEachFrame;
 
     // Complete compute-shader source. This is intentionally not a menu of built-in
     // operations; callers compose D3DHelper HLSL library functions or their own HLSL.
