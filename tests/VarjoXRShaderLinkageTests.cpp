@@ -14,10 +14,13 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -321,6 +324,10 @@ void RunD3D12ShaderLinkageTest() {
     const UINT64 readbackBytes = static_cast<UINT64>(readbackRowPitch) * kHeight;
     D3D12_HEAP_PROPERTIES readbackHeap{};
     readbackHeap.Type = D3D12_HEAP_TYPE_READBACK;
+    readbackHeap.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    readbackHeap.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    readbackHeap.CreationNodeMask = 1;
+    readbackHeap.VisibleNodeMask = 1;
     D3D12CoreLib::ComPtr<ID3D12Resource> readback;
     auto readbackDesc = MakeBufferDesc(readbackBytes);
     Check(SUCCEEDED(device->CreateCommittedResource(
