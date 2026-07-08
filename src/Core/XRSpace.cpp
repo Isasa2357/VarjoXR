@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include <Varjo_mr.h>
+
 #include <VarjoToolkit/Core/VarjoSession.hpp>
 
 namespace VarjoXR {
@@ -18,6 +20,14 @@ XRSpace::XRSpace(XRSpaceDesc desc)
     if (!backend_) {
         throw std::runtime_error("XRSpace requires an external render backend.");
     }
+
+    // Varjo MR headsets render VST/pass-through video only when this is enabled.
+    // Without it, a correctly submitted transparent layer may still appear over a
+    // black background, which looks like a rendering failure in MR samples.
+    varjo_MRSetVideoRender(session_->get(), varjo_True);
+    varjo_MRSetVRViewOffset(session_->get(), 1.0);
+    (void)varjo_GetError(session_->get());
+
     backend_->initialize(session_);
 }
 
