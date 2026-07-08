@@ -67,11 +67,14 @@ void testPlacementAndProcessingDesc() {
     VarjoXR::TextureProcessingDesc processing{};
     processing.enabled = true;
     processing.timing = VarjoXR::ProcessingTiming::BeforeRenderEachFrame;
-    processing.regionDarkenEnabled = true;
+    processing.hlsl = "[numthreads(8,8,1)] void main(uint3 id:SV_DispatchThreadID){}\n";
+    processing.outputSize = {640, 480};
+    processing.params0 = {1.0f, 2.0f, 3.0f, 4.0f};
     plane.setProcessing(VarjoXR::Eye::Left, processing);
     require(plane.material(VarjoXR::Eye::Left).processing.enabled, "processing enabled mismatch");
     require(plane.material(VarjoXR::Eye::Left).processing.timing == VarjoXR::ProcessingTiming::BeforeRenderEachFrame,
             "processing timing mismatch");
+    require(plane.material(VarjoXR::Eye::Left).processing.outputSize.x == 640, "processing output width mismatch");
     require(!plane.material(VarjoXR::Eye::Right).processing.enabled, "right processing should remain default");
 }
 
