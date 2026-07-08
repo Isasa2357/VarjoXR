@@ -53,4 +53,4 @@ varjoxr_add_rendering_plane_sample(02 HeadRelativePlane 02_HeadRelativePlane/Hea
 varjoxr_add_rendering_plane_sample(03 StereoPlane 03_StereoPlane/StereoPlane.cpp)
 varjoxr_add_rendering_plane_sample(04 ShaderPlane 04_ShaderPlane/ShaderPlane.cpp)
 varjoxr_add_rendering_plane_sample(05 MultiplePlanes 05_MultiplePlanes/MultiplePlanes.cpp)
-varjoxr_add_rendering_plane_sample(06 ProcessingPlane 06_ProcessingPlane.cpp)
+varjoxr_add_rendering_plane_sample(06 ProcessingPlane 06_ProcessingPlane/ProcessingPlane.cpp)
