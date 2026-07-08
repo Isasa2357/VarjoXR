@@ -41,6 +41,7 @@ if(MSVC AND VARJOXR_ENABLE_WARNINGS)
     target_compile_options(VarjoXRShaderLinkageTests PRIVATE /utf-8 /W4 /permissive-)
 endif()
 
+varjoxr_copy_varjo_runtime(VarjoXRShaderLinkageTests)
 varjoxr_copy_dxc_runtime(VarjoXRShaderLinkageTests)
 
 add_test(NAME VarjoXRShaderLinkageTests COMMAND VarjoXRShaderLinkageTests)
