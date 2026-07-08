@@ -12,5 +12,7 @@ Each sample is built for the enabled backend(s):
 | 04_ShaderPlane | `RenderingPlane_04_ShaderPlane_D3D11` | `RenderingPlane_04_ShaderPlane_D3D12` | Final pixel shader replacement |
 | 05_MultiplePlanes | `RenderingPlane_05_MultiplePlanes_D3D11` | `RenderingPlane_05_MultiplePlanes_D3D12` | Multiple world-placed Planes |
 | 06_ProcessingPlane | `RenderingPlane_06_ProcessingPlane_D3D11` | `RenderingPlane_06_ProcessingPlane_D3D12` | Programmable texture-processing prepass |
+| 07_EyeMaterialVariants | `RenderingPlane_07_EyeMaterialVariants_D3D11` | `RenderingPlane_07_EyeMaterialVariants_D3D12` | Separate left/right textures, pixel shaders, and processing |
+| 08_NativeTexturePlane | `RenderingPlane_08_NativeTexturePlane_D3D11` | `RenderingPlane_08_NativeTexturePlane_D3D12` | Wrap an externally-created native D3D texture/resource |
 
 The old `RenderingPlane_D3D11` and `RenderingPlane_D3D12` targets are kept as legacy minimal examples.
