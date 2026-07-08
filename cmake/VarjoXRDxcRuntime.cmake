@@ -5,7 +5,7 @@
 set(VARJOXR_DXC_RUNTIME_DIR "" CACHE PATH "Directory that contains dxcompiler.dll and dxil.dll")
 set(VARJOXR_DXC_NUGET_PACKAGE_ID "Microsoft.Direct3D.DXC" CACHE STRING "NuGet package ID used to download the DXC runtime when local search fails")
 set(VARJOXR_DXC_NUGET_VERSION "" CACHE STRING "DXC NuGet package version. Empty means latest listed by NuGet flat container")
-option(VARJOXR_COPY_DXC_RUNTIME "Copy dxcompiler.dll and dxil.dll next to D3D12 executables" ON)
+option(VARJOXR_COPY_DXC_RUNTIME "Copy dxcompiler.dll and dxil.dll next to executables that link helper libraries using DXC" ON)
 option(VARJOXR_FETCH_DXC_RUNTIME "Download Microsoft.Direct3D.DXC with CMake when DXC runtime DLLs are not found locally" ON)
 
 function(varjoxr_find_dxc_runtime_in_dirs out_dxcompiler out_dxil)
@@ -232,9 +232,6 @@ endfunction()
 
 function(varjoxr_copy_dxc_runtime target_name)
     if(NOT VARJOXR_COPY_DXC_RUNTIME)
-        return()
-    endif()
-    if(NOT VARJOXR_ENABLE_D3D12)
         return()
     endif()
     if(NOT TARGET ${target_name})
