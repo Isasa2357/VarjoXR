@@ -2,6 +2,10 @@ include(FetchContent)
 
 option(VARJOXR_FETCH_DEPENDENCIES "Automatically fetch non-Varjo-SDK dependencies" ON)
 
+set(VARJOXR_VARJO_SDK_ROOT "" CACHE PATH "Path to the Varjo Native SDK root directory")
+set(VARJOXR_VARJO_INCLUDE_DIR "" CACHE PATH "Varjo Native SDK include directory")
+set(VARJOXR_VARJO_LIBRARY "" CACHE FILEPATH "Path to VarjoLib.lib")
+
 set(VARJOXR_VARJOTOOLKIT_GIT_REPOSITORY "https://github.com/Isasa2357/VarjoToolkit.git" CACHE STRING "VarjoToolkit git repository")
 set(VARJOXR_VARJOTOOLKIT_GIT_TAG "90fd18c941b32440e5e0f4b067c262593f99c3a0" CACHE STRING "Pinned VarjoToolkit git commit/tag")
 
@@ -16,17 +20,31 @@ set(VARJOXR_GLM_GIT_TAG "1.0.3" CACHE STRING "Pinned glm git tag")
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Do not update already-populated FetchContent dependencies automatically" FORCE)
 
+function(varjoxr_forward_varjo_sdk_cache_variables)
+    if(VARJOXR_VARJO_SDK_ROOT)
+        set(VARJO_SDK_ROOT "${VARJOXR_VARJO_SDK_ROOT}" CACHE PATH "Path to the Varjo Native SDK root directory" FORCE)
+    endif()
+    if(VARJOXR_VARJO_INCLUDE_DIR)
+        set(VARJO_INCLUDE_DIR "${VARJOXR_VARJO_INCLUDE_DIR}" CACHE PATH "Varjo Native SDK include directory" FORCE)
+    endif()
+    if(VARJOXR_VARJO_LIBRARY)
+        set(VARJO_LIBRARY "${VARJOXR_VARJO_LIBRARY}" CACHE FILEPATH "Path to VarjoLib.lib" FORCE)
+    endif()
+endfunction()
+
 function(varjoxr_require_target target_name package_hint)
     if(NOT TARGET ${target_name})
         message(FATAL_ERROR
             "Required dependency target '${target_name}' was not found. "
             "${package_hint} "
             "If this machine has no internet access, add the dependency with add_subdirectory() or install its CMake package. "
-            "Varjo Native SDK is never auto-fetched; set VARJO_SDK_ROOT or VARJO_INCLUDE_DIR / VARJO_LIBRARY for VarjoToolkit.")
+            "Varjo Native SDK is never auto-fetched; set VARJOXR_VARJO_SDK_ROOT or VARJOXR_VARJO_INCLUDE_DIR / VARJOXR_VARJO_LIBRARY.")
     endif()
 endfunction()
 
 function(varjoxr_fetch_varjotoolkit)
+    varjoxr_forward_varjo_sdk_cache_variables()
+
     set(VARJOTOOLKIT_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(VARJOTOOLKIT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(VARJOTOOLKIT_BUILD_HMD_TESTS OFF CACHE BOOL "" FORCE)
@@ -82,6 +100,8 @@ function(varjoxr_fetch_glm)
 endfunction()
 
 function(varjoxr_resolve_dependencies)
+    varjoxr_forward_varjo_sdk_cache_variables()
+
     if(NOT TARGET VarjoToolkit::VarjoToolkit)
         find_package(VarjoToolkit 0.2.0 EXACT CONFIG QUIET)
     endif()
