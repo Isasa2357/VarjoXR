@@ -12,7 +12,7 @@ float4 main(float2 uv : TEXCOORD0) : SV_TARGET
 {
     float4 c = xrTexture.Sample(xrSampler, uv);
     float stripe = step(0.92f, frac(uv.y * 12.0f));
-    c.rgb = c.rgb * float3(1.25f, 0.65f, 0.55f) + stripe.xxx * 0.25f;
+    c.rgb = c.rgb * float3(1.25f, 0.65f, 0.55f) + float3(stripe, stripe, stripe) * 0.25f;
     return c * tint;
 }
 )hlsl";
