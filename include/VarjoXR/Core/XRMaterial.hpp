@@ -1,8 +1,12 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -16,6 +20,33 @@ enum class ProcessingTiming {
     BeforeRenderEachFrame,
 };
 
+struct TextureProcessingConstantBuffer {
+    // Default convention: user constants are bound to b0.
+    uint32_t registerIndex = 0;
+    std::vector<std::byte> data;
+
+    void setBytes(const void* src, std::size_t sizeBytes) {
+        data.resize(sizeBytes);
+        if (sizeBytes > 0) {
+            std::memcpy(data.data(), src, sizeBytes);
+        }
+    }
+
+    template <typename T>
+    void set(const T& value) {
+        static_assert(std::is_trivially_copyable_v<T>,
+                      "TextureProcessingConstantBuffer::set requires a trivially copyable type.");
+        setBytes(&value, sizeof(T));
+    }
+};
+
+struct TextureProcessingFrameConstantsDesc {
+    // VarjoXR-provided frame/texture constants are separated from user constants.
+    // Default convention: b1.
+    bool enabled = true;
+    uint32_t registerIndex = 1;
+};
+
 // TextureProcessingDesc describes a programmable texture -> texture prepass.
 // The application supplies a complete compute-shader HLSL source. The shader may
 // include D3DHelper-provided HLSL library files, or any user-provided HLSL files
@@ -23,9 +54,10 @@ enum class ProcessingTiming {
 // drawing the Plane, then feeds the processed texture into the Plane HLSL.
 //
 // Expected D3D11/D3D12 resource binding convention for v0.1:
-//   t0: Texture2D<float4> xrInput
-//   u0: RWTexture2D<float4> xrOutput
-//   b0: cbuffer XRTextureProcessingConstants
+//   t0: input texture SRV
+//   u0: output texture UAV
+//   b0: user-defined constant buffer bytes, if userConstants.data is not empty
+//   b1: optional VarjoXR frame/texture constants, if frameConstants.enabled
 //
 // Default thread group contract:
 //   numthreads(8, 8, 1)
@@ -45,9 +77,8 @@ struct TextureProcessingDesc {
     // 0,0 means source texture size.
     glm::uvec2 outputSize{0, 0};
 
-    // Runtime parameters forwarded to the processing constant buffer.
-    glm::vec4 params0{0.0f, 0.0f, 0.0f, 0.0f};
-    glm::vec4 params1{0.0f, 0.0f, 0.0f, 0.0f};
+    TextureProcessingConstantBuffer userConstants;
+    TextureProcessingFrameConstantsDesc frameConstants;
 };
 
 struct XRMaterial {
