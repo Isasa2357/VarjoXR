@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -27,6 +28,7 @@
 
 namespace VarjoXR::Backends::D3D11 {
 namespace {
+namespace P = D3D11CoreLib::Processing;
 
 struct PlaneVertex {
     float position[3];
@@ -195,6 +197,39 @@ std::string BuildUserPixelShader(const std::string& userHlsl) {
     return std::string(kPlaneShaderPreamble) + "\n" + userHlsl;
 }
 
+P::ProcessingRect MakeProcessingRect(UINT width, UINT height) noexcept {
+    P::ProcessingRect rect{};
+    rect.x = 0;
+    rect.y = 0;
+    rect.width = width;
+    rect.height = height;
+    return rect;
+}
+
+bool FloatEqual(float a, float b) noexcept {
+    return std::abs(a - b) <= 1.0e-6f;
+}
+
+bool ProcessingDescEquals(const TextureProcessingDesc& a, const TextureProcessingDesc& b) noexcept {
+    return a.enabled == b.enabled &&
+        a.timing == b.timing &&
+        a.resizeEnabled == b.resizeEnabled &&
+        a.resizeSize == b.resizeSize &&
+        a.blurEnabled == b.blurEnabled &&
+        FloatEqual(a.blurRadius, b.blurRadius) &&
+        a.regionDarkenEnabled == b.regionDarkenEnabled &&
+        a.regionCenterUv == b.regionCenterUv &&
+        FloatEqual(a.regionRadiusUv, b.regionRadiusUv) &&
+        FloatEqual(a.outsideBrightness, b.outsideBrightness) &&
+        a.customProcessingShaderEnabled == b.customProcessingShaderEnabled &&
+        a.customProcessingHlsl == b.customProcessingHlsl;
+}
+
+DXGI_FORMAT ResolveProcessingFormat(D3D11CoreLib::D3D11Resource& resource) {
+    const DXGI_FORMAT format = resource.GetFormat();
+    return format == DXGI_FORMAT_UNKNOWN ? DXGI_FORMAT_R8G8B8A8_UNORM : format;
+}
+
 } // namespace
 
 D3D11Texture::D3D11Texture(
@@ -237,6 +272,23 @@ struct D3D11Backend::Impl {
     D3D11CoreLib::ComPtr<ID3D11SamplerState> sampler;
     std::shared_ptr<D3D11Texture> whiteTexture;
 
+    P::D3D11ProcessingContext processingContext;
+    P::D3D11Resizer resizer;
+    P::D3D11Blurrer blurrer;
+    P::D3D11RegionEffect regionEffect;
+    bool processingReady = false;
+
+    struct ProcessingCacheEntry {
+        std::weak_ptr<D3D11Texture> source;
+        TextureProcessingDesc desc{};
+        std::shared_ptr<D3D11Texture> finalTexture;
+        D3D11CoreLib::D3D11Resource resizeOutput;
+        D3D11CoreLib::D3D11Resource blurScratch;
+        D3D11CoreLib::D3D11Resource blurOutput;
+        D3D11CoreLib::D3D11Resource regionOutput;
+    };
+    std::unordered_map<const XRMaterial*, ProcessingCacheEntry> processingCache;
+
     D3D11CoreLib::ShaderBytecode vertexShaderBytecode;
     std::unique_ptr<D3D11CoreLib::D3D11GraphicsPipeline> defaultPipeline;
     std::unordered_map<std::string, std::unique_ptr<D3D11CoreLib::D3D11GraphicsPipeline>> pipelineCache;
@@ -270,6 +322,7 @@ struct D3D11Backend::Impl {
 
         createSwapChain();
         createPlaneResources();
+        createProcessingResources();
         createWhiteTexture();
         createDefaultPipeline();
 
@@ -354,6 +407,15 @@ struct D3D11Backend::Impl {
         sampler = D3D11CoreLib::CreateSampler(*core, D3D11CoreLib::MakeLinearClampSamplerDesc());
     }
 
+    void createProcessingResources() {
+        processingContext.Initialize(*core);
+        resizer.Initialize(processingContext);
+        blurrer.Initialize(processingContext);
+        regionEffect.Initialize(processingContext);
+        processingReady = true;
+        OutputDebugStringA("[VarjoXR][D3D11] D3D11Helper Processing initialized.\n");
+    }
+
     void createWhiteTexture() {
         const uint8_t white[4] = {255, 255, 255, 255};
         whiteTexture = createTextureFromRGBA(white, 1, 1, 4);
@@ -423,6 +485,95 @@ struct D3D11Backend::Impl {
             OutputDebugStringA("\n");
             return *defaultPipeline;
         }
+    }
+
+    std::shared_ptr<D3D11Texture> resolveMaterialTexture(const XRMaterial& material, const FrameContext& frameContext) {
+        (void)frameContext;
+        auto texture = std::dynamic_pointer_cast<D3D11Texture>(material.texture);
+        if (!texture || !texture->srv()) {
+            return whiteTexture;
+        }
+        if (!material.processing.enabled) {
+            return texture;
+        }
+        if (!processingReady || !texture->resource()) {
+            OutputDebugStringA("[VarjoXR][D3D11] Processing requested but source texture has no D3D11Resource. Using source texture.\n");
+            return texture;
+        }
+        if (material.processing.customProcessingShaderEnabled) {
+            OutputDebugStringA("[VarjoXR][D3D11] customProcessingHlsl is not implemented yet. Built-in processing passes will run only.\n");
+        }
+
+        auto& cache = processingCache[&material];
+        const auto cachedSource = cache.source.lock();
+        const bool cacheValid = cache.finalTexture && cachedSource.get() == texture.get() && ProcessingDescEquals(cache.desc, material.processing);
+        if (cacheValid && material.processing.timing == ProcessingTiming::OnTextureChanged) {
+            return cache.finalTexture;
+        }
+
+        auto* ctx = core->GetImmediateContext();
+        D3D11CoreLib::D3D11Resource* current = &texture->resource();
+        UINT currentWidth = texture->width();
+        UINT currentHeight = texture->height();
+        DXGI_FORMAT currentFormat = ResolveProcessingFormat(*current);
+
+        if (material.processing.resizeEnabled && material.processing.resizeSize.x > 0 && material.processing.resizeSize.y > 0) {
+            const UINT dstWidth = material.processing.resizeSize.x;
+            const UINT dstHeight = material.processing.resizeSize.y;
+            cache.resizeOutput = resizer.CreateOutputTexture(*core, dstWidth, dstHeight, currentFormat);
+            P::ResizeDesc resizeDesc{};
+            resizeDesc.filter = P::ProcessingFilter::Linear;
+            resizeDesc.srcRect = MakeProcessingRect(currentWidth, currentHeight);
+            resizeDesc.dstRect = MakeProcessingRect(dstWidth, dstHeight);
+            resizer.DispatchResize(ctx, *current, cache.resizeOutput, resizeDesc);
+            current = &cache.resizeOutput;
+            currentWidth = dstWidth;
+            currentHeight = dstHeight;
+        }
+
+        if (material.processing.blurEnabled && material.processing.blurRadius > 0.0f) {
+            const UINT radius = std::max<UINT>(1, std::min<UINT>(P::D3D11Blurrer::MaxRadius, static_cast<UINT>(std::round(material.processing.blurRadius))));
+            cache.blurScratch = blurrer.CreateScratchTexture(*core, currentWidth, currentHeight, currentFormat);
+            cache.blurOutput = blurrer.CreateOutputTexture(*core, currentWidth, currentHeight, currentFormat);
+            P::BlurDesc blurDesc{};
+            blurDesc.mode = P::BlurMode::Gaussian;
+            blurDesc.srcRect = MakeProcessingRect(currentWidth, currentHeight);
+            blurDesc.dstRect = MakeProcessingRect(currentWidth, currentHeight);
+            blurDesc.radius = radius;
+            blurDesc.sigma = std::max(1.0f, static_cast<float>(radius) * 0.5f);
+            blurDesc.edgeMode = P::BlurEdgeMode::Clamp;
+            blurrer.DispatchBlur(ctx, *current, cache.blurScratch, cache.blurOutput, blurDesc);
+            current = &cache.blurOutput;
+        }
+
+        if (material.processing.regionDarkenEnabled) {
+            cache.regionOutput = regionEffect.CreateOutputTexture(*core, currentWidth, currentHeight, currentFormat);
+            P::RegionEffectDesc regionDesc{};
+            regionDesc.srcFormat = currentFormat;
+            regionDesc.dstFormat = currentFormat;
+            regionDesc.srcRect = MakeProcessingRect(currentWidth, currentHeight);
+            regionDesc.dstRect = MakeProcessingRect(currentWidth, currentHeight);
+            regionDesc.shape = P::RegionShape::Circle;
+            regionDesc.selection = P::RegionSelection::Outside;
+            regionDesc.effect = P::RegionEffectMode::Darken;
+            regionDesc.centerX = material.processing.regionCenterUv.x * static_cast<float>(currentWidth);
+            regionDesc.centerY = material.processing.regionCenterUv.y * static_cast<float>(currentHeight);
+            regionDesc.radius = material.processing.regionRadiusUv * static_cast<float>(std::min(currentWidth, currentHeight));
+            regionDesc.edgeSoftness = 0.0f;
+            regionDesc.darkenFactor = material.processing.outsideBrightness;
+            regionEffect.DispatchRegionEffect(ctx, *current, cache.regionOutput, regionDesc);
+            current = &cache.regionOutput;
+        }
+
+        if (current == &texture->resource()) {
+            return texture;
+        }
+
+        auto srv = D3D11CoreLib::CreateTexture2DSrv(*core, *current, currentFormat);
+        cache.source = texture;
+        cache.desc = material.processing;
+        cache.finalTexture = std::make_shared<D3D11Texture>(*current, std::move(srv), currentWidth, currentHeight, TextureOwnership::Owned);
+        return cache.finalTexture;
     }
 
     void beginFrame() {
@@ -561,10 +712,7 @@ struct D3D11Backend::Impl {
         ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
         ctx->IASetIndexBuffer(indexBuffer.AsBuffer(), DXGI_FORMAT_R16_UINT, 0);
 
-        auto texture = std::dynamic_pointer_cast<D3D11Texture>(material.texture);
-        if (!texture || !texture->srv()) {
-            texture = whiteTexture;
-        }
+        auto texture = resolveMaterialTexture(material, frameContext);
         ID3D11ShaderResourceView* srv = texture ? texture->srv() : nullptr;
         ID3D11SamplerState* samplerState = sampler.Get();
         ctx->PSSetShaderResources(0, 1, &srv);
