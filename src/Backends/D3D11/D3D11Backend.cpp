@@ -44,7 +44,7 @@ struct PlaneConstants {
     float tint[4];
     float params0[4];
     float params1[4];
-    float frameParams[4]; // gazeUv.xy, timeSeconds, frameNumber modulo float range
+    float frameParams[4];
 };
 
 struct XRTextureProcessingFrameConstants {
@@ -52,7 +52,7 @@ struct XRTextureProcessingFrameConstants {
     uint32_t srcHeight = 0;
     uint32_t dstWidth = 0;
     uint32_t dstHeight = 0;
-    float frameParams[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // gazeUv.xy, timeSeconds, frameNumber
+    float frameParams[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 constexpr PlaneVertex kPlaneVertices[] = {
@@ -215,28 +215,22 @@ std::string BuildUserPixelShader(const std::string& userHlsl) {
     return std::string(kPlaneShaderPreamble) + "\n" + userHlsl;
 }
 
-bool FloatEqual(float a, float b) noexcept {
-    return std::abs(a - b) <= 1.0e-6f;
-}
-
 bool FrameConstantsDescEquals(const TextureProcessingFrameConstantsDesc& a, const TextureProcessingFrameConstantsDesc& b) noexcept {
     return a.enabled == b.enabled && a.registerIndex == b.registerIndex;
 }
 
-bool UserConstantsEquals(const TextureProcessingConstantBuffer& a, const TextureProcessingConstantBuffer& b) noexcept {
-    return a.registerIndex == b.registerIndex && a.data == b.data;
+bool UserConstantsLayoutEquals(const TextureProcessingConstantBuffer& a, const TextureProcessingConstantBuffer& b) noexcept {
+    return a.registerIndex == b.registerIndex && a.data.size() == b.data.size();
 }
 
-bool ProcessingDescEquals(const TextureProcessingDesc& a, const TextureProcessingDesc& b) noexcept {
-    return a.enabled == b.enabled &&
-        a.timing == b.timing &&
-        a.hlsl == b.hlsl &&
+bool ProcessingPipelineDescEquals(const TextureProcessingDesc& a, const TextureProcessingDesc& b) noexcept {
+    return a.hlsl == b.hlsl &&
         a.entryPoint == b.entryPoint &&
         a.target == b.target &&
         a.sourceName == b.sourceName &&
         a.includeDirs == b.includeDirs &&
         a.outputSize == b.outputSize &&
-        UserConstantsEquals(a.userConstants, b.userConstants) &&
+        UserConstantsLayoutEquals(a.userConstants, b.userConstants) &&
         FrameConstantsDescEquals(a.frameConstants, b.frameConstants);
 }
 
@@ -305,8 +299,8 @@ struct D3D11Backend::Impl {
     std::shared_ptr<D3D11Texture> whiteTexture;
 
     struct ProcessingCacheEntry {
-        std::weak_ptr<D3D11Texture> source;
-        TextureProcessingDesc desc{};
+        std::weak_ptr<D3D11Texture> lastDispatchedSource;
+        TextureProcessingDesc pipelineDesc{};
         std::unique_ptr<D3D11CoreLib::D3D11ComputePipeline> pipeline;
         std::shared_ptr<D3D11Texture> finalTexture;
         D3D11CoreLib::D3D11Resource output;
@@ -525,17 +519,15 @@ struct D3D11Backend::Impl {
 
     bool ensureTextureProcessingCache(
         const XRMaterial& material,
-        std::shared_ptr<D3D11Texture>& sourceTexture,
+        const std::shared_ptr<D3D11Texture>& sourceTexture,
         ProcessingCacheEntry& cache) {
         const auto& processing = material.processing;
-        const auto cachedSource = cache.source.lock();
-        const bool descMatches = ProcessingDescEquals(cache.desc, processing);
-        const bool sourceMatches = cachedSource.get() == sourceTexture.get();
         const UINT dstWidth = processing.outputSize.x > 0 ? processing.outputSize.x : sourceTexture->width();
         const UINT dstHeight = processing.outputSize.y > 0 ? processing.outputSize.y : sourceTexture->height();
+        const bool pipelineMatches = ProcessingPipelineDescEquals(cache.pipelineDesc, processing);
         const bool outputMatches = cache.finalTexture && cache.finalTexture->width() == dstWidth && cache.finalTexture->height() == dstHeight;
 
-        if (sourceMatches && descMatches && outputMatches && cache.pipeline && cache.outputUav) {
+        if (pipelineMatches && outputMatches && cache.pipeline && cache.outputUav) {
             return true;
         }
 
@@ -566,24 +558,32 @@ struct D3D11Backend::Impl {
         auto outputSrv = D3D11CoreLib::CreateTexture2DSrv(*core, output, outputFormat);
         auto outputUav = D3D11CoreLib::CreateTexture2DUav(*core, output, outputFormat);
 
-        cache.source = sourceTexture;
-        cache.desc = processing;
+        cache.pipelineDesc = processing;
         cache.pipeline = std::move(pipeline);
         cache.output = std::move(output);
         cache.outputUav = std::move(outputUav);
         cache.finalTexture = std::make_shared<D3D11Texture>(cache.output, std::move(outputSrv), dstWidth, dstHeight, TextureOwnership::Owned);
+        cache.lastDispatchedSource.reset();
         cache.hasDispatched = false;
 
         const UINT userConstantBytes = AlignConstantBufferBytes(processing.userConstants.data.size());
         if (userConstantBytes > 0) {
             cache.alignedUserConstants.assign(userConstantBytes, std::byte{0});
-            std::memcpy(cache.alignedUserConstants.data(), processing.userConstants.data.data(), processing.userConstants.data.size());
             cache.userConstantBuffer = D3D11CoreLib::CreateConstantBuffer(*core, userConstantBytes);
         } else {
             cache.alignedUserConstants.clear();
             cache.userConstantBuffer = {};
         }
         return true;
+    }
+
+    void updateUserConstants(const XRMaterial& material, ProcessingCacheEntry& cache) {
+        const auto& data = material.processing.userConstants.data;
+        if (!cache.userConstantBuffer || data.empty()) {
+            return;
+        }
+        std::fill(cache.alignedUserConstants.begin(), cache.alignedUserConstants.end(), std::byte{0});
+        std::memcpy(cache.alignedUserConstants.data(), data.data(), data.size());
     }
 
     std::shared_ptr<D3D11Texture> resolveMaterialTexture(const XRMaterial& material, const FrameContext& frameContext) {
@@ -604,7 +604,10 @@ struct D3D11Backend::Impl {
             return texture;
         }
 
-        const bool skipDispatch = material.processing.timing == ProcessingTiming::OnTextureChanged && cache.hasDispatched;
+        const auto lastSource = cache.lastDispatchedSource.lock();
+        const bool skipDispatch = material.processing.timing == ProcessingTiming::OnTextureChanged &&
+            cache.hasDispatched &&
+            lastSource.get() == texture.get();
         if (!skipDispatch) {
             runTextureProcessing(material, texture, cache, frameContext);
         }
@@ -622,6 +625,7 @@ struct D3D11Backend::Impl {
 
         auto* ctx = core->GetImmediateContext();
 
+        updateUserConstants(material, cache);
         if (cache.userConstantBuffer && !cache.alignedUserConstants.empty()) {
             ctx->UpdateSubresource(cache.userConstantBuffer.AsBuffer(), 0, nullptr, cache.alignedUserConstants.data(), 0, 0);
             ID3D11Buffer* userCb = cache.userConstantBuffer.AsBuffer();
@@ -664,6 +668,7 @@ struct D3D11Backend::Impl {
             ID3D11Buffer* nullCb = nullptr;
             ctx->CSSetConstantBuffers(material.processing.frameConstants.registerIndex, 1, &nullCb);
         }
+        cache.lastDispatchedSource = sourceTexture;
         cache.hasDispatched = true;
     }
 
