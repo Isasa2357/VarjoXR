@@ -1,70 +1,85 @@
 # VarjoXR
 
-VarjoXR は、Varjo Native SDK 上に、`XRSpace` に `XRPlane` などのオブジェクトを追加して `update()` するだけで XR/MR 表示を行えるようにする C++17 ライブラリです。
+VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の Plane として表示するための C++17 ライブラリです。
 
-この実装では、Varjo 公式サンプルの `examples/Common/` には依存しません。Varjo 側は Native SDK の C API のみを使い、DirectX 側は自作ライブラリの D3D11Helper / D3D12Helper を積極的に使います。
+この実装では、Varjo SDK `examples/Common/` には依存しません。Varjo 側は Native SDK / VarjoToolkit の session・frame・layer・swapchain を使い、DirectX 側は D3D11Helper / D3D12Helper を使います。
 
 ## 現在の実装範囲
 
-- Varjo Native SDK の session / frame / layer / swapchain を独自管理
+- 外部 `VarjoSession` を使った `XRSpace`
+- 外部 D3D11 / D3D12 core を使った backend
 - D3D11 backend の Plane 描画
 - D3D12 backend の Plane 描画
-- `XRSpace` / `XRPlane` / `XRObject` / `Material`
-- 左右 eye 別 texture / pixel shader HLSL
-- CPU RGBA からの texture 作成API
-- D3D11 native texture / SRV wrapper
-- D3D12 native resource wrapper
-- Varjo view index から `Eye::Left` / `Eye::Right` への解決
-- Context / Focus view を texture array slice として submit
-- Varjo Runtimeなしで実行可能なcore unit tests
+- D3D12 frame resource ring / fence による `WaitIdle()` 回避
+- `XRSpace` / `XRPlane` / `XRMaterial` / `XRTexture`
+- World / HeadRelative placement
+- 左右 eye 別 texture / final pixel shader HLSL / processing HLSL
+- CPU RGBA からの texture 作成
+- D3D11 `ID3D11Texture2D` / `ID3D11ShaderResourceView` wrapper
+- D3D12 `ID3D12Resource` wrapper
+- programmable texture processing prepass
+- Varjo Runtimeなしで実行可能な core unit tests
+- RenderingPlane samples: 01〜06
 
 ## 依存関係
 
 - Windows 10 / 11
-- Visual Studio 2026 / Visual Studio 18 以降
-- CMake 4.2 以降
-  - `Visual Studio 18 2026` generator は CMake 4.2 以降が必要
+- Visual Studio 2022
+- CMake
 - C++17
 - Varjo Native SDK
+- VarjoToolkit
 - D3D11Helper
 - D3D12Helper
+- glm
 
 使用しないもの:
 
 - Varjo SDK `examples/Common/`
-- Varjo サンプル内の `Session`, `MultiLayerView`, `D3D11Renderer`, `Scene`
+- Varjo sample内の `Session`, `MultiLayerView`, `D3D11Renderer`, `Scene`
 
 ## ビルドオプション
 
 | Option | Default | Description |
 |---|---:|---|
 | `VARJOXR_BUILD_RUNTIME` | `ON` | Varjo Native SDK / backend を含む `VarjoXR` target をビルドする |
-| `VARJOXR_BUILD_TESTS` | `ON` | CTest用のテストをビルドする |
+| `VARJOXR_BUILD_SAMPLES` | `ON` | samples をビルドする |
+| `VARJOXR_BUILD_TESTS` | `ON` | CTest用のcore testsをビルドする |
 | `VARJOXR_ENABLE_D3D11` | `ON` | D3D11 backendをビルドする |
 | `VARJOXR_ENABLE_D3D12` | `ON` | D3D12 backendをビルドする |
-| `VARJOXR_ENABLE_COVERAGE` | `OFF` | coverage計測用の設定・targetを有効化する |
 | `VARJOXR_VARJO_INCLUDE_DIR` | empty | `Varjo.h` などがあるinclude directory |
 | `VARJOXR_VARJO_LIBRARY` | empty | `VarjoLib.lib` のパス |
 
-## 最小使用例
+## 最小使用例: D3D11
 
 ```cpp
 #include <VarjoXR/VarjoXR.hpp>
 
+#include <D3D11Helper/D3D11Core/D3D11Core.hpp>
+#include <VarjoToolkit/Core/VarjoSession.hpp>
+
 #include <array>
 #include <cstdint>
+#include <memory>
 
 int main() {
-    VarjoXR::XRSpaceConfig config{};
-    config.backend = VarjoXR::BackendType::D3D11; // or D3D12
+    auto session = std::make_shared<VarjoSession>();
+    if (!session->valid()) {
+        session->initialize();
+    }
 
-    VarjoXR::XRSpace space(config);
-    auto* plane = space.createPlane({1.0f, 0.6f});
-    plane->transform().position = {0.0f, 0.0f, -1.0f};
+    auto d3d = D3D11CoreLib::D3D11Core::CreateShared();
+    auto backend = VarjoXR::Backends::D3D11::CreateBackend(d3d);
+    VarjoXR::XRSpace space({session, std::move(backend)});
 
-    const std::array<uint8_t, 4> white = {255, 255, 255, 255};
-    auto texture = space.createTextureFromRGBA(white.data(), 1, 1, 4);
-    plane->setTexture(texture);
+    auto& plane = space.createPlane({1.0f, 0.6f});
+    plane.setPlacementMode(VarjoXR::PlacementMode::World);
+    plane.transform().position = {0.0f, 0.0f, -1.0f};
+
+    const std::array<std::uint8_t, 4> white = {255, 255, 255, 255};
+    auto texture = static_cast<VarjoXR::Backends::D3D11::D3D11Backend&>(space.backend())
+        .createTextureFromRGBA(white.data(), 1, 1, 4);
+    plane.setTexture(texture);
 
     while (true) {
         space.update();
@@ -72,40 +87,104 @@ int main() {
 }
 ```
 
-## native resource を Plane に貼る
-
-D3D11 では `ID3D11Texture2D*` または `ID3D11ShaderResourceView*` を `XRTexture` としてwrapできます。
+## 最小使用例: D3D12
 
 ```cpp
-// ID3D11Texture2D* cameraTexture = ...;
-auto tex = space.createTextureFromD3D11Resource(cameraTexture);
-plane->setTexture(VarjoXR::Eye::Left, tex);
+#include <VarjoXR/VarjoXR.hpp>
 
-// 既にSRVを持っている場合。
-// ID3D11ShaderResourceView* srv = ...;
-auto srvTex = space.createTextureFromD3D11Srv(srv, width, height);
-plane->setTexture(VarjoXR::Eye::Right, srvTex);
-```
+#include <D3D12Helper/D3D12Core/D3D12Core.hpp>
+#include <VarjoToolkit/Core/VarjoSession.hpp>
 
-D3D12 では `ID3D12Resource*` をwrapできます。SRV descriptor は VarjoXR の内部 heap に作成されます。
+#include <array>
+#include <cstdint>
+#include <memory>
 
-```cpp
-// ID3D12Resource* cameraTexture = ...;
-auto tex = space.createTextureFromD3D12Resource(cameraTexture);
-plane->setTexture(tex);
-```
+int main() {
+    auto session = std::make_shared<VarjoSession>();
+    if (!session->valid()) {
+        session->initialize();
+    }
 
-## カスタム pixel shader
+    D3D12CoreLib::D3D12CoreConfig config{};
+    config.createDirectQueue = true;
+    config.createCopyQueue = true;
+    auto d3d = D3D12CoreLib::D3D12Core::CreateShared(config);
 
-`setPixelShaderHLSL()` には、次の関数だけを含む HLSL を渡します。
+    auto backend = VarjoXR::Backends::D3D12::CreateBackend(d3d);
+    VarjoXR::XRSpace space({session, std::move(backend)});
 
-```hlsl
-float4 main(float2 uv : TEXCOORD0) : SV_TARGET {
-    return xrTexture.Sample(xrSampler, uv);
+    auto& plane = space.createPlane({1.0f, 0.6f});
+    plane.setPlacementMode(VarjoXR::PlacementMode::World);
+    plane.transform().position = {0.0f, 0.0f, -1.0f};
+
+    const std::array<std::uint8_t, 4> white = {255, 255, 255, 255};
+    auto texture = static_cast<VarjoXR::Backends::D3D12::D3D12Backend&>(space.backend())
+        .createTextureFromRGBA(white.data(), 1, 1, 4);
+    plane.setTexture(texture);
+
+    while (true) {
+        space.update();
+    }
 }
 ```
 
-以下は VarjoXR 側で宣言済みです。
+## Native resource を Plane に貼る
+
+D3D11:
+
+```cpp
+// ID3D11Texture2D* cameraTexture = ...;
+auto tex = static_cast<VarjoXR::Backends::D3D11::D3D11Backend&>(space.backend())
+    .wrapTexture(cameraTexture, DXGI_FORMAT_R8G8B8A8_UNORM);
+plane.setTexture(VarjoXR::Eye::Left, tex);
+
+// ID3D11ShaderResourceView* srv = ...;
+auto srvTex = static_cast<VarjoXR::Backends::D3D11::D3D11Backend&>(space.backend())
+    .wrapSrv(srv, width, height);
+plane.setTexture(VarjoXR::Eye::Right, srvTex);
+```
+
+D3D12:
+
+```cpp
+// ID3D12Resource* cameraTexture = ...;
+auto tex = static_cast<VarjoXR::Backends::D3D12::D3D12Backend&>(space.backend())
+    .wrapResource(cameraTexture, DXGI_FORMAT_R8G8B8A8_UNORM);
+plane.setTexture(tex);
+```
+
+## Placement
+
+`XRPlane` は `World` と `HeadRelative` の2種類の配置をサポートします。
+
+```cpp
+plane.setPlacementMode(VarjoXR::PlacementMode::World);
+plane.transform().position = {0.0f, 0.0f, -1.2f};
+
+plane.setPlacementMode(VarjoXR::PlacementMode::HeadRelative);
+plane.transform().position = {0.0f, -0.05f, -0.9f};
+```
+
+## 左右eye別Material
+
+同じPlane形状・同じTransformに対して、左右eye別にtexture / HLSL / processingを設定できます。
+
+```cpp
+plane.setTexture(VarjoXR::Eye::Left, leftTexture);
+plane.setTexture(VarjoXR::Eye::Right, rightTexture);
+
+plane.setPixelShaderHLSL(VarjoXR::Eye::Left, leftPixelShader);
+plane.setPixelShaderHLSL(VarjoXR::Eye::Right, rightPixelShader);
+
+plane.setProcessing(VarjoXR::Eye::Left, leftProcessing);
+plane.setProcessing(VarjoXR::Eye::Right, rightProcessing);
+```
+
+## Final pixel shader
+
+`setPixelShaderHLSL()` は、PlaneをVarjo swapchainへ描画する最後のpixel shaderを差し替える advanced API です。
+
+渡すHLSLには `main(float2 uv : TEXCOORD0) : SV_TARGET` だけを書きます。次の宣言はVarjoXR側が前置します。
 
 ```hlsl
 Texture2D xrTexture : register(t0);
@@ -115,97 +194,191 @@ cbuffer PlaneConstants : register(b0) {
     float4x4 view;
     float4x4 projection;
     float4 tint;
+    float4 params0;
+    float4 params1;
+    float4 frameParams;
 };
 ```
 
-## runtime build
+例:
 
-D3D11 backendのみをビルドする場合:
+```hlsl
+float4 main(float2 uv : TEXCOORD0) : SV_TARGET
+{
+    float4 c = xrTexture.Sample(xrSampler, uv);
+    float2 p = uv * 2.0f - 1.0f;
+    float vignette = saturate(1.0f - dot(p, p) * 0.55f);
+    c.rgb *= vignette;
+    return c * tint;
+}
+```
+
+## Programmable texture processing
+
+画像処理は、final pixel shaderではなく `TextureProcessingDesc` による texture -> texture compute prepass として行います。
+
+```text
+source texture
+  -> compute HLSL prepass
+  -> processed texture
+  -> Plane final pixel shader
+  -> Varjo swapchain
+```
+
+binding規約:
+
+```text
+t0: input texture SRV
+u0: output texture UAV
+b0: user-defined constant buffer bytes
+b1: VarjoXR frame/texture constants
+```
+
+C++側:
+
+```cpp
+struct MyConstants {
+    float centerX;
+    float centerY;
+    float radius;
+    float outsideBrightness;
+};
+
+MyConstants constants{0.5f, 0.5f, 0.28f, 0.45f};
+
+VarjoXR::TextureProcessingDesc processing{};
+processing.enabled = true;
+processing.timing = VarjoXR::ProcessingTiming::BeforeRenderEachFrame;
+processing.hlsl = myComputeShaderSource;
+processing.entryPoint = "main";
+processing.target = "cs_5_0";
+processing.outputSize = {1280, 720};
+processing.userConstants.registerIndex = 0;
+processing.userConstants.set(constants);
+processing.frameConstants.enabled = true;
+processing.frameConstants.registerIndex = 1;
+
+plane.setProcessing(processing);
+```
+
+HLSL側:
+
+```hlsl
+Texture2D<float4> xrInput : register(t0);
+RWTexture2D<float4> xrOutput : register(u0);
+
+cbuffer MyConstants : register(b0)
+{
+    float centerX;
+    float centerY;
+    float radius;
+    float outsideBrightness;
+};
+
+cbuffer XRTextureProcessingFrameConstants : register(b1)
+{
+    uint srcWidth;
+    uint srcHeight;
+    uint dstWidth;
+    uint dstHeight;
+    float4 frameParams;
+};
+
+[numthreads(8, 8, 1)]
+void main(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= dstWidth || id.y >= dstHeight) return;
+    float2 uv = (float2(id.xy) + 0.5f) / float2(dstWidth, dstHeight);
+    xrOutput[id.xy] = xrInput.Load(int3(uint2(uv * float2(srcWidth, srcHeight)), 0));
+}
+```
+
+`hlsl/VarjoXR/TextureProcessing.hlsli` には、`xrInput` / `xrOutput` / `XRTextureProcessingFrameConstants` と補助関数をまとめています。ユーザー定数 `b0` は任意構造体にするため、この `.hlsli` には含めていません。
+
+## Samples
+
+`samples/RenderingPlane` は設計書に合わせて 01〜06 に分割されています。
+
+| Target | 内容 |
+|---|---|
+| `RenderingPlane_01_SinglePlane_D3D11` / `D3D12` | World配置の単一Plane |
+| `RenderingPlane_02_HeadRelativePlane_D3D11` / `D3D12` | HeadRelative配置のPlane |
+| `RenderingPlane_03_StereoPlane_D3D11` / `D3D12` | 左右eye別texture |
+| `RenderingPlane_04_ShaderPlane_D3D11` / `D3D12` | final pixel shader差し替え |
+| `RenderingPlane_05_MultiplePlanes_D3D11` / `D3D12` | 複数Plane同時表示 |
+| `RenderingPlane_06_ProcessingPlane_D3D11` / `D3D12` | programmable texture processing |
+
+追加のprocessing専用sample:
+
+| Target | 内容 |
+|---|---|
+| `ProgrammableProcessing_D3D11` | processing constantsを毎frame更新するD3D11 sample |
+| `ProgrammableProcessing_D3D12` | processing constantsを毎frame更新するD3D12 sample |
+
+## Build examples
+
+D3D11:
 
 ```bat
 git fetch --prune origin
-git checkout main
-git pull --ff-only origin main
-cmake --preset vs18-x64-runtime-d3d11
-cmake --build --preset vs18-x64-runtime-d3d11-debug
+git checkout rewrite/v0.1
+git pull --ff-only origin rewrite/v0.1
+
+cmake -S . -B out/build/rewrite-v01-d3d11 -G "Visual Studio 17 2022" -A x64 ^
+  -DVARJOXR_ENABLE_D3D11=ON ^
+  -DVARJOXR_ENABLE_D3D12=OFF ^
+  -DVARJOXR_BUILD_SAMPLES=ON ^
+  -DVARJOXR_BUILD_TESTS=ON
+
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_01_SinglePlane_D3D11
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_02_HeadRelativePlane_D3D11
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_03_StereoPlane_D3D11
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_04_ShaderPlane_D3D11
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_05_MultiplePlanes_D3D11
+cmake --build out/build/rewrite-v01-d3d11 --config Debug --target RenderingPlane_06_ProcessingPlane_D3D11
 ```
 
-D3D12 backendのみをビルドする場合:
+D3D12:
 
 ```bat
 git fetch --prune origin
-git checkout main
-git pull --ff-only origin main
-cmake --preset vs18-x64-runtime-d3d12
-cmake --build --preset vs18-x64-runtime-d3d12-debug
+git checkout rewrite/v0.1
+git pull --ff-only origin rewrite/v0.1
+
+cmake -S . -B out/build/rewrite-v01-d3d12 -G "Visual Studio 17 2022" -A x64 ^
+  -DVARJOXR_ENABLE_D3D11=OFF ^
+  -DVARJOXR_ENABLE_D3D12=ON ^
+  -DVARJOXR_BUILD_SAMPLES=ON ^
+  -DVARJOXR_BUILD_TESTS=ON
+
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_01_SinglePlane_D3D12
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_02_HeadRelativePlane_D3D12
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_03_StereoPlane_D3D12
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_04_ShaderPlane_D3D12
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_05_MultiplePlanes_D3D12
+cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane_06_ProcessingPlane_D3D12
 ```
 
-## テスト
+## Tests
 
-Varjo Runtime、HMD、D3D11Helper、D3D12Helperなしでcore testsだけを実行できます。
-
-推奨: GitHub同期込みで CMake preset を使う方法。既存cloneのリポジトリルートで実行してください。
+Core testsはVarjo RuntimeやHMDなしで実行できます。
 
 ```bat
 git fetch --prune origin
-git checkout main
-git pull --ff-only origin main
-cmake --preset vs18-x64-tests
-cmake --build --preset vs18-x64-tests-debug
-ctest --preset vs18-x64-tests-debug
+git checkout rewrite/v0.1
+git pull --ff-only origin rewrite/v0.1
+
+cmake --build out/build/rewrite-v01-d3d11 --config Debug
+ctest --test-dir out/build/rewrite-v01-d3d11 -C Debug --output-on-failure
 ```
 
-presetを使わない場合:
+HMD / Varjo Runtime / D3D backend を含むintegration testはまだ未整備です。runtime backendはsamplesを使って確認します。
 
-```bat
-git fetch --prune origin
-git checkout main
-git pull --ff-only origin main
-cmake -S . -B out/build/vs18-x64-tests -G "Visual Studio 18 2026" -A x64 -DVARJOXR_BUILD_RUNTIME=OFF -DVARJOXR_BUILD_TESTS=ON
-cmake --build out/build/vs18-x64-tests --config Debug
-ctest --test-dir out/build/vs18-x64-tests -C Debug --output-on-failure
-```
+## 設計上まだ未実装のもの
 
-現在のcore testsは、`Eye`、`Math`、`Transform`、`Texture`、`Material`、`XRObject`、`XRPlane`、`XRSpaceConfig` を対象にしています。
-
-## カバレッジ
-
-Windows / MSVC では OpenCppCoverage を使う想定です。OpenCppCoverage が PATH に無い場合、`VarjoXRCoverage` target はcoverageレポートを出さずに通常テストだけを実行します。
-
-推奨: GitHub同期込みで CMake preset を使う方法。既存cloneのリポジトリルートで実行してください。
-
-```bat
-git fetch --prune origin
-git checkout main
-git pull --ff-only origin main
-cmake --preset vs18-x64-coverage
-cmake --build --preset vs18-x64-coverage-debug
-```
-
-OpenCppCoverageが無い環境で、coverageではなく通常テストだけを確実に回す場合:
-
-```bat
-git fetch --prune origin
-git checkout main
-git pull --ff-only origin main
-cmake --preset vs18-x64-tests
-cmake --build --preset vs18-x64-tests-debug
-ctest --preset vs18-x64-tests-debug
-```
-
-presetを使わない場合:
-
-```bat
-git fetch --prune origin
-git checkout main
-git pull --ff-only origin main
-cmake -S . -B out/build/vs18-x64-coverage -G "Visual Studio 18 2026" -A x64 -DVARJOXR_BUILD_RUNTIME=OFF -DVARJOXR_BUILD_TESTS=ON -DVARJOXR_ENABLE_COVERAGE=ON
-cmake --build out/build/vs18-x64-coverage --config Debug --target VarjoXRCoverage
-```
-
-目標:
-
-- core層: 90%以上
-- runtime/backend層: backend実装後にfake adapter / integration testsを追加して90%以上を目指す
-
-詳細は [`doc/TestPlan.md`](doc/TestPlan.md) を参照してください。
+- `XRFrame` public class
+- `XRScene` public class
+- `XRObject` base class
+- Circle / Cube / Sphere / custom mesh
+- depth buffer / alpha sort / occlusion
+- backend integration tests
