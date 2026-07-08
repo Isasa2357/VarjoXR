@@ -7,7 +7,9 @@ option(VARJOXR_COPY_DXC_RUNTIME "Copy dxcompiler.dll and dxil.dll next to D3D12 
 
 function(varjoxr_find_dxc_runtime)
     if(DEFINED VARJOXR_DXCOMPILER_DLL AND EXISTS "${VARJOXR_DXCOMPILER_DLL}")
-        return()
+        if(DEFINED VARJOXR_DXIL_DLL AND EXISTS "${VARJOXR_DXIL_DLL}")
+            return()
+        endif()
     endif()
 
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -75,6 +77,11 @@ function(varjoxr_find_dxc_runtime)
         "C:/Program Files (x86)/Windows Kits/10/bin/${_dxc_arch}"
     )
     list(APPEND _dxc_candidate_dirs ${_default_windows_sdk_dirs})
+
+    if(DEFINED ENV{PATH})
+        file(TO_CMAKE_PATH "$ENV{PATH}" _env_path_dirs)
+        list(APPEND _dxc_candidate_dirs ${_env_path_dirs})
+    endif()
 
     list(REMOVE_DUPLICATES _dxc_candidate_dirs)
 
