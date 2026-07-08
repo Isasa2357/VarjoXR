@@ -19,6 +19,7 @@ VarjoXR は、Varjo Native SDK 上で D3D11 / D3D12 texture を MR 空間上の 
 - D3D12 `ID3D12Resource` wrapper
 - programmable texture processing prepass
 - Varjo Runtimeなしで実行可能な core unit tests
+- backend compile/smoke tests
 - RenderingPlane samples: 01〜06
 
 ## 依存関係
@@ -361,7 +362,9 @@ cmake --build out/build/rewrite-v01-d3d12 --config Debug --target RenderingPlane
 
 ## Tests
 
-Core testsはVarjo RuntimeやHMDなしで実行できます。
+Core tests and backend compile/smoke tests can run without HMD. `VarjoXRBackendSmokeTests` validates backend types and default backend descriptors without creating a Varjo session or a D3D device.
+
+When `VARJOXR_BUILD_SAMPLES=ON`, CTest also registers `Build_<target>` tests for the RenderingPlane and ProgrammableProcessing sample targets. These tests invoke `cmake --build` for each sample target and are marked `RUN_SERIAL` to avoid concurrent builds in the same build directory.
 
 ```bat
 git fetch --prune origin
@@ -372,7 +375,14 @@ cmake --build out/build/rewrite-v01-d3d11 --config Debug
 ctest --test-dir out/build/rewrite-v01-d3d11 -C Debug --output-on-failure
 ```
 
-HMD / Varjo Runtime / D3D backend を含むintegration testはまだ未整備です。runtime backendはsamplesを使って確認します。
+To run only backend smoke tests:
+
+```bat
+ctest --test-dir out/build/rewrite-v01-d3d11 -C Debug -R "VarjoXRBackendSmokeTests|Build_RenderingPlane" --output-on-failure
+ctest --test-dir out/build/rewrite-v01-d3d12 -C Debug -R "VarjoXRBackendSmokeTests|Build_RenderingPlane" --output-on-failure
+```
+
+HMD / Varjo Runtime / actual presentation integration tests are still not automated. Runtime behavior is currently verified through samples on a machine with Varjo Runtime and HMD.
 
 ## 設計上まだ未実装のもの
 
@@ -381,4 +391,4 @@ HMD / Varjo Runtime / D3D backend を含むintegration testはまだ未整備で
 - `XRObject` base class
 - Circle / Cube / Sphere / custom mesh
 - depth buffer / alpha sort / occlusion
-- backend integration tests
+- HMD presentation integration tests
