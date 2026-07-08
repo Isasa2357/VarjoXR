@@ -1,7 +1,9 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -14,26 +16,38 @@ enum class ProcessingTiming {
     BeforeRenderEachFrame,
 };
 
-// v0.1 keeps ImageProcessing as a small descriptor so that the public Material API
-// is stable while D3D11/D3D12 implementations can map it to D3DHelper Processing.
-// More complex graph/pipeline APIs can be added behind this descriptor later.
+// TextureProcessingDesc describes a programmable texture -> texture prepass.
+// The application supplies a complete compute-shader HLSL source. The shader may
+// include D3DHelper-provided HLSL library files, or any user-provided HLSL files
+// available through includeDirs. VarjoXR compiles and dispatches the shader before
+// drawing the Plane, then feeds the processed texture into the Plane HLSL.
+//
+// Expected D3D11/D3D12 resource binding convention for v0.1:
+//   t0: Texture2D<float4> xrInput
+//   u0: RWTexture2D<float4> xrOutput
+//   b0: cbuffer XRTextureProcessingConstants
+//
+// Default thread group contract:
+//   numthreads(8, 8, 1)
+//   entryPoint defaults to "main".
 struct TextureProcessingDesc {
     bool enabled = false;
     ProcessingTiming timing = ProcessingTiming::OnTextureChanged;
 
-    bool resizeEnabled = false;
-    glm::uvec2 resizeSize{0, 0};
+    // Complete compute-shader source. This is intentionally not a menu of built-in
+    // operations; callers compose D3DHelper HLSL library functions or their own HLSL.
+    std::string hlsl;
+    std::string entryPoint = "main";
+    std::string target = "cs_5_0";
+    std::string sourceName = "VarjoXR_TextureProcessing.hlsl";
+    std::vector<std::filesystem::path> includeDirs;
 
-    bool blurEnabled = false;
-    float blurRadius = 0.0f;
+    // 0,0 means source texture size.
+    glm::uvec2 outputSize{0, 0};
 
-    bool regionDarkenEnabled = false;
-    glm::vec2 regionCenterUv{0.5f, 0.5f};
-    float regionRadiusUv = 0.25f;
-    float outsideBrightness = 0.5f;
-
-    bool customProcessingShaderEnabled = false;
-    std::string customProcessingHlsl;
+    // Runtime parameters forwarded to the processing constant buffer.
+    glm::vec4 params0{0.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec4 params1{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 struct XRMaterial {
@@ -41,7 +55,8 @@ struct XRMaterial {
     TextureProcessingDesc processing;
 
     // Plane HLSL is the final pixel shader used while drawing the plane into the
-    // Varjo swapchain. It is independent of ImageProcessing, which is texture -> texture.
+    // Varjo swapchain. It is independent of the texture processing prepass, which
+    // is a programmable texture -> texture compute pass.
     std::string planePixelShaderHlsl;
 
     glm::vec4 tint{1.0f, 1.0f, 1.0f, 1.0f};
