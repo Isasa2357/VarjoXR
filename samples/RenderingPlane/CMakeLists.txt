@@ -22,6 +22,7 @@ function(varjoxr_add_rendering_plane_sample sample_id sample_name source_file)
             ${source_file}
             Common/RenderingPlaneSampleCommon.hpp)
         varjoxr_configure_rendering_plane_sample(${target} RENDERING_PLANE_SAMPLE_D3D12)
+        varjoxr_copy_dxc_runtime(${target})
     endif()
 endfunction()
 
@@ -44,6 +45,7 @@ if(VARJOXR_ENABLE_D3D12)
     if(MSVC)
         target_compile_options(RenderingPlane_D3D12 PRIVATE /utf-8 /EHsc)
     endif()
+    varjoxr_copy_dxc_runtime(RenderingPlane_D3D12)
 endif()
 
 varjoxr_add_rendering_plane_sample(01 SinglePlane 01_SinglePlane/SinglePlane.cpp)
@@ -51,4 +53,4 @@ varjoxr_add_rendering_plane_sample(02 HeadRelativePlane 02_HeadRelativePlane/Hea
 varjoxr_add_rendering_plane_sample(03 StereoPlane 03_StereoPlane/StereoPlane.cpp)
 varjoxr_add_rendering_plane_sample(04 ShaderPlane 04_ShaderPlane/ShaderPlane.cpp)
 varjoxr_add_rendering_plane_sample(05 MultiplePlanes 05_MultiplePlanes/MultiplePlanes.cpp)
-varjoxr_add_rendering_plane_sample(06 ProcessingPlane 06_ProcessingPlane/ProcessingPlane.cpp)
+varjoxr_add_rendering_plane_sample(06 ProcessingPlane 06_ProcessingPlane.cpp)
