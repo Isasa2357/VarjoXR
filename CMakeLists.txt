@@ -75,6 +75,8 @@ target_compile_definitions(VarjoXR
         VARJOXR_VERSION_MINOR=${PROJECT_VERSION_MINOR}
         VARJOXR_VERSION_PATCH=${PROJECT_VERSION_PATCH}
         VARJOXR_VERSION_STRING="${PROJECT_VERSION}"
+    PRIVATE
+        GLM_ENABLE_EXPERIMENTAL
 )
 
 target_link_libraries(VarjoXR
