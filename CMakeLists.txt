@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(VarjoXR
-    VERSION 0.1.0
+    VERSION 0.2.0
     LANGUAGES CXX
 )
 
@@ -48,14 +48,14 @@ if(VARJOXR_ENABLE_D3D11)
     list(APPEND VARJOXR_PUBLIC_HEADERS
         include/VarjoXR/Backends/D3D11/D3D11Backend.hpp)
     list(APPEND VARJOXR_SOURCES
-        src/Backends/D3D11/D3D11Backend.cpp)
+        src/Backends/D3D11/D3D11BackendExternalFrameInfo.cpp)
 endif()
 
 if(VARJOXR_ENABLE_D3D12)
     list(APPEND VARJOXR_PUBLIC_HEADERS
         include/VarjoXR/Backends/D3D12/D3D12Backend.hpp)
     list(APPEND VARJOXR_SOURCES
-        src/Backends/D3D12/D3D12Backend.cpp)
+        src/Backends/D3D12/D3D12BackendExternalFrameInfo.cpp)
 endif()
 
 add_library(VarjoXR STATIC ${VARJOXR_SOURCES} ${VARJOXR_PUBLIC_HEADERS})
