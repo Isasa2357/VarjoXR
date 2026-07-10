@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include <VarjoToolkit/Core/VarjoFrameInfo.hpp>
 #include <VarjoXR/Backends/IRenderBackend.hpp>
 #include <VarjoXR/Core/XRPlane.hpp>
 #include <VarjoXR/Foundation/FrameContext.hpp>
@@ -37,6 +38,9 @@ public:
     void render();
     void endFrame();
     void update();
+
+    // Snapshot from the most recent beginFrame()/update() synchronization.
+    VarjoFrameInfoSnapshot frameInfoSnapshot() const;
 
     ::VarjoSession& session();
     const ::VarjoSession& session() const;
