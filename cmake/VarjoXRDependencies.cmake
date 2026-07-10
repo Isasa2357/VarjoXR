@@ -7,7 +7,7 @@ set(VARJOXR_VARJO_INCLUDE_DIR "" CACHE PATH "Varjo Native SDK include directory"
 set(VARJOXR_VARJO_LIBRARY "" CACHE FILEPATH "Path to VarjoLib.lib")
 
 set(VARJOXR_VARJOTOOLKIT_GIT_REPOSITORY "https://github.com/Isasa2357/VarjoToolkit.git" CACHE STRING "VarjoToolkit git repository")
-set(VARJOXR_VARJOTOOLKIT_GIT_TAG "c9afbdf7fd63f0c559592e8071981409411a44a8" CACHE STRING "Pinned VarjoToolkit git commit/tag")
+set(VARJOXR_VARJOTOOLKIT_GIT_TAG "97ec3b3cc975455d8a664657e6596f62b2df0cff" CACHE STRING "Pinned VarjoToolkit git commit/tag")
 
 set(VARJOXR_D3D11HELPER_GIT_REPOSITORY "https://github.com/Isasa2357/D3D11Helper.git" CACHE STRING "D3D11Helper git repository")
 set(VARJOXR_D3D11HELPER_GIT_TAG "fdb76fd36668bff6a094645897939c11b93369b0" CACHE STRING "Pinned D3D11Helper git commit/tag")
