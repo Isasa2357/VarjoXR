@@ -10,8 +10,17 @@ public:
     {
         if (!valid()) return false;
         varjo_WaitSync(session(), get());
-        return true;
+        last_snapshot_ = snapshot();
+        return last_snapshot_.valid;
     }
+
+    VarjoFrameInfoSnapshot lastSnapshot() const
+    {
+        return last_snapshot_;
+    }
+
+private:
+    VarjoFrameInfoSnapshot last_snapshot_{};
 };
 
 // Reuse the established backend implementation while replacing only its
@@ -28,7 +37,7 @@ namespace VarjoXR::Backends::D3D12 {
 VarjoFrameInfoSnapshot D3D12Backend::frameInfoSnapshot() const
 {
     if (!impl_ || !impl_->frameInfo) return {};
-    return impl_->frameInfo->snapshot();
+    return impl_->frameInfo->lastSnapshot();
 }
 
 } // namespace VarjoXR::Backends::D3D12
