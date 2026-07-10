@@ -7,7 +7,7 @@ set(VARJOXR_VARJO_INCLUDE_DIR "" CACHE PATH "Varjo Native SDK include directory"
 set(VARJOXR_VARJO_LIBRARY "" CACHE FILEPATH "Path to VarjoLib.lib")
 
 set(VARJOXR_VARJOTOOLKIT_GIT_REPOSITORY "https://github.com/Isasa2357/VarjoToolkit.git" CACHE STRING "VarjoToolkit git repository")
-set(VARJOXR_VARJOTOOLKIT_GIT_TAG "90fd18c941b32440e5e0f4b067c262593f99c3a0" CACHE STRING "Pinned VarjoToolkit git commit/tag")
+set(VARJOXR_VARJOTOOLKIT_GIT_TAG "c9afbdf7fd63f0c559592e8071981409411a44a8" CACHE STRING "Pinned VarjoToolkit git commit/tag")
 
 set(VARJOXR_D3D11HELPER_GIT_REPOSITORY "https://github.com/Isasa2357/D3D11Helper.git" CACHE STRING "D3D11Helper git repository")
 set(VARJOXR_D3D11HELPER_GIT_TAG "fdb76fd36668bff6a094645897939c11b93369b0" CACHE STRING "Pinned D3D11Helper git commit/tag")
@@ -103,12 +103,14 @@ function(varjoxr_resolve_dependencies)
     varjoxr_forward_varjo_sdk_cache_variables()
 
     if(NOT TARGET VarjoToolkit::VarjoToolkit)
-        find_package(VarjoToolkit 0.2.0 EXACT CONFIG QUIET)
+        find_package(VarjoToolkit 0.5.0 EXACT CONFIG QUIET)
     endif()
     if(NOT TARGET VarjoToolkit::VarjoToolkit AND VARJOXR_FETCH_DEPENDENCIES)
         varjoxr_fetch_varjotoolkit()
     endif()
-    varjoxr_require_target(VarjoToolkit::VarjoToolkit "Expected VarjoToolkit 0.2.0 or the pinned FetchContent commit ${VARJOXR_VARJOTOOLKIT_GIT_TAG}.")
+    varjoxr_require_target(
+        VarjoToolkit::VarjoToolkit
+        "Expected VarjoToolkit 0.5.0 or pinned commit ${VARJOXR_VARJOTOOLKIT_GIT_TAG}.")
 
     if(NOT TARGET glm::glm)
         find_package(glm 1.0.3 EXACT CONFIG QUIET)
