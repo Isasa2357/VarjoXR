@@ -10,20 +10,21 @@
 namespace VarjoXR {
 
 XRSpace::XRSpace(XRSpaceDesc desc)
-    : session_(std::move(desc.session)), backend_(std::move(desc.backend)) {
+    : session_(std::move(desc.session))
+    , backend_(std::move(desc.backend))
+{
     if (!session_) {
-        throw std::runtime_error("XRSpace requires an external VarjoToolkit::VarjoSession.");
+        throw std::runtime_error(
+            "XRSpace requires an external VarjoToolkit::VarjoSession.");
     }
     if (!session_->valid()) {
-        throw std::runtime_error("XRSpace requires a valid VarjoToolkit::VarjoSession.");
+        throw std::runtime_error(
+            "XRSpace requires a valid VarjoToolkit::VarjoSession.");
     }
     if (!backend_) {
         throw std::runtime_error("XRSpace requires an external render backend.");
     }
 
-    // Varjo MR headsets render VST/pass-through video only when this is enabled.
-    // Without it, a correctly submitted transparent layer may still appear over a
-    // black background, which looks like a rendering failure in MR samples.
     varjo_MRSetVideoRender(session_->get(), varjo_True);
     varjo_MRSetVRViewOffset(session_->get(), 1.0);
     (void)varjo_GetError(session_->get());
@@ -33,33 +34,39 @@ XRSpace::XRSpace(XRSpaceDesc desc)
 
 XRSpace::~XRSpace() = default;
 
-XRPlane& XRSpace::createPlane(glm::vec2 sizeMeters) {
+XRPlane& XRSpace::createPlane(glm::vec2 sizeMeters)
+{
     auto plane = std::make_unique<XRPlane>(sizeMeters);
-    XRPlane& ref = *plane;
+    XRPlane& reference = *plane;
     planes_.push_back(std::move(plane));
-    return ref;
+    return reference;
 }
 
-void XRSpace::clearPlanes() {
+void XRSpace::clearPlanes()
+{
     planes_.clear();
 }
 
-void XRSpace::beginFrame() {
+void XRSpace::beginFrame()
+{
     if (frameBegun_) {
-        throw std::runtime_error("XRSpace::beginFrame called while a frame is already active.");
+        throw std::runtime_error(
+            "XRSpace::beginFrame called while a frame is already active.");
     }
     backend_->beginFrame();
     frameBegun_ = true;
 }
 
-void XRSpace::render() {
+void XRSpace::render()
+{
     if (!frameBegun_) {
         throw std::runtime_error("XRSpace::render requires beginFrame first.");
     }
     backend_->render(planes_, frameContext_);
 }
 
-void XRSpace::endFrame() {
+void XRSpace::endFrame()
+{
     if (!frameBegun_) {
         throw std::runtime_error("XRSpace::endFrame requires beginFrame first.");
     }
@@ -67,25 +74,35 @@ void XRSpace::endFrame() {
     frameBegun_ = false;
 }
 
-void XRSpace::update() {
+void XRSpace::update()
+{
     beginFrame();
     render();
     endFrame();
 }
 
-::VarjoSession& XRSpace::session() {
+VarjoFrameInfoSnapshot XRSpace::frameInfoSnapshot() const
+{
+    return backend_->frameInfoSnapshot();
+}
+
+::VarjoSession& XRSpace::session()
+{
     return *session_;
 }
 
-const ::VarjoSession& XRSpace::session() const {
+const ::VarjoSession& XRSpace::session() const
+{
     return *session_;
 }
 
-IRenderBackend& XRSpace::backend() {
+IRenderBackend& XRSpace::backend()
+{
     return *backend_;
 }
 
-const IRenderBackend& XRSpace::backend() const {
+const IRenderBackend& XRSpace::backend() const
+{
     return *backend_;
 }
 
