@@ -1,8 +1,8 @@
 #include <VarjoToolkit/Core/VarjoFrameInfo.hpp>
 
-// VarjoToolkit intentionally does not expose or call waitSync. The render
+// VarjoToolkit intentionally does not expose or call waitSync. The D3D12
 // backend is the single frame-pacing owner and performs the C API call here.
-class VarjoXRRenderFrameInfo final : public VarjoFrameInfo {
+class VarjoXRD3D12RenderFrameInfo final : public VarjoFrameInfo {
 public:
     using VarjoFrameInfo::VarjoFrameInfo;
 
@@ -14,10 +14,10 @@ public:
     }
 };
 
-// Reuse the existing backend implementation while replacing only its internal
-// frame-info storage type and synchronization call at this translation-unit
-// boundary. The original implementation is not compiled separately.
-#define VarjoFrameInfo VarjoXRRenderFrameInfo
+// Reuse the established backend implementation while replacing only its
+// internal frame-info storage type and synchronization call in this translation
+// unit. D3D12Backend.cpp is not compiled separately by CMake.
+#define VarjoFrameInfo VarjoXRD3D12RenderFrameInfo
 #define waitSync waitSyncFromRenderer
 #include "D3D12Backend.cpp"
 #undef waitSync
