@@ -1,6 +1,6 @@
 #include <VarjoToolkit/Core/VarjoFrameInfo.hpp>
 
-class VarjoXRRenderFrameInfo final : public VarjoFrameInfo {
+class VarjoXRD3D11RenderFrameInfo final : public VarjoFrameInfo {
 public:
     using VarjoFrameInfo::VarjoFrameInfo;
 
@@ -12,7 +12,7 @@ public:
     }
 };
 
-#define VarjoFrameInfo VarjoXRRenderFrameInfo
+#define VarjoFrameInfo VarjoXRD3D11RenderFrameInfo
 #define waitSync waitSyncFromRenderer
 #include "D3D11Backend.cpp"
 #undef waitSync
