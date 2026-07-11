@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(VarjoXR
-    VERSION 0.2.0
+    VERSION 0.3.0
     LANGUAGES CXX
 )
 
@@ -26,6 +26,7 @@ include(cmake/VarjoXRVarjoRuntime.cmake)
 
 set(VARJOXR_PUBLIC_HEADERS
     include/VarjoXR/VarjoXR.hpp
+    include/VarjoXR/Foundation/AsyncDoubleBuffer.hpp
     include/VarjoXR/Foundation/BackendType.hpp
     include/VarjoXR/Foundation/Eye.hpp
     include/VarjoXR/Foundation/PlacementMode.hpp
