@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -94,6 +95,32 @@ void testPlacementAndProcessingDesc() {
     require(!plane.material(VarjoXR::Eye::Right).processing.enabled, "right processing should remain default");
 }
 
+void testAsyncDoubleBufferKeepsReadValueAlive() {
+    struct TestState {
+        std::uint64_t revision = 0;
+        std::vector<int> values;
+    };
+
+    VarjoXR::AsyncDoubleBuffer<TestState> buffer;
+    require(!buffer.latest(), "empty double buffer should return null");
+    require(buffer.generation() == 0, "empty double buffer generation mismatch");
+
+    buffer.publish(TestState{1, {10, 20}});
+    const auto first = buffer.latest();
+    require(first && first->revision == 1, "first published state mismatch");
+    require(first->values.size() == 2, "first published values mismatch");
+    require(buffer.generation() == 1, "first generation mismatch");
+
+    buffer.publish(TestState{2, {30, 40, 50}});
+    const auto second = buffer.latest();
+    require(second && second->revision == 2, "second published state mismatch");
+    require(second->values.size() == 3, "second published values mismatch");
+    require(buffer.generation() == 2, "second generation mismatch");
+
+    require(first->revision == 1, "previous read must remain immutable and alive");
+    require(first->values[0] == 10, "previous read data changed after slot reuse");
+}
+
 } // namespace
 
 int main() {
@@ -101,6 +128,7 @@ int main() {
         testTransformMatrix();
         testPlaneMaterialsAreEyeIndependent();
         testPlacementAndProcessingDesc();
+        testAsyncDoubleBufferKeepsReadValueAlive();
     } catch (const std::exception& e) {
         std::cerr << "[FAIL] " << e.what() << '\n';
         return 1;
