@@ -1,5 +1,6 @@
 #pragma once
 
+#include <VarjoXR/Foundation/AsyncDoubleBuffer.hpp>
 #include <VarjoXR/Foundation/BackendType.hpp>
 #include <VarjoXR/Foundation/Eye.hpp>
 #include <VarjoXR/Foundation/FrameContext.hpp>
