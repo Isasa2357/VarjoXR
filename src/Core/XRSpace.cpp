@@ -302,8 +302,11 @@ void XRSpace::renderThreadMain(XRSpaceRenderThreadDesc desc) noexcept
                     "XRSpace render thread received an invalid FrameInfo snapshot after update.");
             }
 
-            frameInfoBuffer_.publish(snapshot);
-            if (desc.afterFrame) desc.afterFrame(*this, snapshot);
+            frameInfoBuffer_.publish(std::move(snapshot));
+            const auto publishedSnapshot = frameInfoBuffer_.latest();
+            if (desc.afterFrame && publishedSnapshot) {
+                desc.afterFrame(*this, *publishedSnapshot);
+            }
         }
     } catch (...) {
         setRenderThreadException(std::current_exception());
